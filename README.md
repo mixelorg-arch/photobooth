@@ -10,8 +10,8 @@ Three files, no dependencies, no build step.
 
 ## Running it
 
-**It has to be served over `http://localhost`.** Browsers only give a page the
-camera in a secure context, and `file://` is not one — double-clicking
+**It has to be served over `http://localhost` or HTTPS.** Browsers only give a
+page the camera in a secure context, and `file://` is not one — double-clicking
 `index.html` gets you the booth with a dead camera.
 
 ```bash
@@ -21,6 +21,51 @@ python3 -m http.server 8815 --directory PhotoboothiPad/web
 Then open <http://localhost:8815> and allow the camera when asked.
 
 There is also a `photobooth-web` entry in `.claude/launch.json`.
+
+## Installing it on an iPhone or iPad
+
+The app installs to the Home Screen and launches full screen, with no Safari
+chrome and no address bar.
+
+1. Open the hosted HTTPS address in **Safari** (not Chrome — only Safari can
+   add to the Home Screen on iOS).
+2. **Share → Add to Home Screen → Add.**
+3. Launch it from the Home Screen icon.
+
+Two things that only work from the Home Screen icon: full screen, and the
+screen staying awake mid-countdown.
+
+**It must be HTTPS.** `http://192.168.x.x` from your laptop will not do —
+Safari refuses the camera outside a secure context, so the booth would launch
+with a dead preview. Host it (see below) or use localhost.
+
+**Offline.** A service worker caches the whole app on first load, so once it
+has been opened on the device it keeps working with no network at all — which
+is the normal case at a venue. Bump `CACHE` in `sw.js` on every deploy or the
+Home Screen icon will keep serving the old build.
+
+**Lock it down** with Settings → Accessibility → **Guided Access**, then
+triple-click the side button on the attract screen.
+
+## Hosting
+
+**GitHub Pages.** Free, HTTPS, and it serves a folder of static files — which
+is exactly what this is. From the project root:
+
+```bash
+./publish.sh
+```
+
+That pushes `web/` to a `gh-pages` branch; set Settings → Pages → branch
+`gh-pages`, folder `/ (root)`. The repository has to be **public** — Pages on
+a private repository needs a paid plan. Full steps are in the script's header.
+
+**Not Cloudinary.** It is a media CDN: it stores and transforms images and
+video, and serves them from per-asset URLs. It has no concept of a site root,
+so `index.html` would have no stable address, relative links to `booth.css`
+and `booth.js` would not resolve, and a service worker cannot take a scope
+there — which kills both the offline cache and the Home Screen install. Use it
+for the photos if you ever add uploads; not for the app.
 
 ## Using it
 
@@ -34,7 +79,13 @@ There is also a `photobooth-web` entry in `.claude/launch.json`.
 
 ## Printing silently
 
-Press PRINT and paper comes out. No dialog.
+**On a Mac, in Chrome.** Press PRINT and paper comes out, no dialog.
+
+**Not on an iPhone or iPad.** iOS Safari always raises the AirPrint sheet and
+has no kiosk-printing flag — there is no way for a web page to print silently
+there, and no workaround exists. On an iPad the guest picks the printer from
+the sheet each time. If silent printing on the iPad matters more than avoiding
+Xcode, the native build is the only way to get it.
 
 **There is no web API for that.** `window.print()` always raises the system
 print dialog and no page can suppress it — that is a deliberate browser
