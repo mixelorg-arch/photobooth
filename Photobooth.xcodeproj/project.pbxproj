@@ -1,0 +1,420 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3AB4D2BFB13E5A8FAC7BEB66 /* BoothRootView.swift in Build */ = {isa = PBXBuildFile; fileRef = 976EC76C2E66FE92DA6FC884; };
+		2A43306B5ECBBE7BD989A461 /* PhotoboothApp.swift in Build */ = {isa = PBXBuildFile; fileRef = B7A59A116ABFB6109A55E197; };
+		2CB57041D0D03A0925640F62 /* CameraController.swift in Build */ = {isa = PBXBuildFile; fileRef = DA0E123C7A8F0B54694DBD2C; };
+		B96A4150488355E531B0C5F3 /* CameraPreview.swift in Build */ = {isa = PBXBuildFile; fileRef = DBBA3EB87B4B50006A7C9B30; };
+		BAC8D80BB7012F4234212E9F /* AdminView.swift in Build */ = {isa = PBXBuildFile; fileRef = F4CD088BCC34FC8831DC6C01; };
+		6A78215F1BC4A3E2CD944478 /* AttractView.swift in Build */ = {isa = PBXBuildFile; fileRef = B0F329220F45C1440C54A793; };
+		EC9D1E03E889AED8B0E741C6 /* CaptureView.swift in Build */ = {isa = PBXBuildFile; fileRef = 4390478DB94D8ED4F006001A; };
+		48AB31297F16819F370AD6D7 /* CopiesView.swift in Build */ = {isa = PBXBuildFile; fileRef = D58D366B9679A02ED30AE9A2; };
+		B5E0FF887D74B80DCD3D157C /* LayoutSelectView.swift in Build */ = {isa = PBXBuildFile; fileRef = 4FCA7040F6207201790181B7; };
+		B6168CB8EB0FBA3915035E3C /* PrintConfirmView.swift in Build */ = {isa = PBXBuildFile; fileRef = DAD5AD015FFF584156C9CF60; };
+		99C9678D5B30ADE1011DFB79 /* PrintingView.swift in Build */ = {isa = PBXBuildFile; fileRef = 55EA8B9AD57706CEBF0BD9DB; };
+		2517217FB9BFBAAC879CF126 /* ReviewView.swift in Build */ = {isa = PBXBuildFile; fileRef = 39E6949D171C8C27AA88998D; };
+		F5032B0E5435A6E4D89F9455 /* ThankYouView.swift in Build */ = {isa = PBXBuildFile; fileRef = 04536F2858C1B09365ECBFED; };
+		19FEDAF5FC35296A01ACCF25 /* LayoutTemplate.swift in Build */ = {isa = PBXBuildFile; fileRef = 2324477A428B0EBC33C339E7; };
+		4E1BC464C22A25CB1DFC73FE /* PhotoLayoutRenderer.swift in Build */ = {isa = PBXBuildFile; fileRef = 93D73BF2E2F62BD67161DA3A; };
+		4E58778EB318D4E9CA4391C4 /* PanelControls.swift in Build */ = {isa = PBXBuildFile; fileRef = 577776360D95EC54BDAFF6BB; };
+		B881D2FC7E169E4EFD50F379 /* PanelDialog.swift in Build */ = {isa = PBXBuildFile; fileRef = EC9EB17A853DA660FA860C07; };
+		B598754EBDF478C36AD619B2 /* PanelEffects.swift in Build */ = {isa = PBXBuildFile; fileRef = DECD6FAF6EE16652553AC605; };
+		BD4FCABC7E5582A0D279F815 /* PanelModule.swift in Build */ = {isa = PBXBuildFile; fileRef = 87534C7CD46F89364BC5D274; };
+		65F3BB47F8267C503D3D1764 /* PanelTheme.swift in Build */ = {isa = PBXBuildFile; fileRef = 7458AF6D2DB8BD1E722893D7; };
+		A660329AC608C060B6B4035A /* PixelFont.swift in Build */ = {isa = PBXBuildFile; fileRef = 02229018DD2A525A3511E737; };
+		40E43165BE24ECA56D76E0EB /* PixelIcons.swift in Build */ = {isa = PBXBuildFile; fileRef = B9EACF243236DD2864730308; };
+		91B6B4A6ACDC7D6F849A4A88 /* AirPrintService.swift in Build */ = {isa = PBXBuildFile; fileRef = 89AA481CC517DB360CCEBFAA; };
+		92955D36F607E7BDDACDF1D9 /* Dither.swift in Build */ = {isa = PBXBuildFile; fileRef = B2209EBAF428A744D10CFD58; };
+		2C05B08EBA5BD59ACE4E90B1 /* ESCPOSEncoder.swift in Build */ = {isa = PBXBuildFile; fileRef = DC0395F7D1EA2BAA5C6D6E37; };
+		25A6CFC3CB08520A9978453C /* PrinterService.swift in Build */ = {isa = PBXBuildFile; fileRef = B6E5CC121A391A4941961638; };
+		944D811BE9438C62D9A6E2CA /* ThermalSDKService.swift in Build */ = {isa = PBXBuildFile; fileRef = FA91831E31F44DC2064A9ADB; };
+		9A3F04EF6EC26B9F28859A2A /* AppSettings.swift in Build */ = {isa = PBXBuildFile; fileRef = F4CE134099B04A08351F9DA6; };
+		632FA995526076CA54DF269B /* SessionState.swift in Build */ = {isa = PBXBuildFile; fileRef = A891FEB716DFB47E1023468E; };
+		375DDC02A2610E5B42CA38A5 /* SettingsStore.swift in Build */ = {isa = PBXBuildFile; fileRef = EBFEE6D7FA634CBAB48BFDF7; };
+		0BF783DF727FDAAED5658BA8 /* Assets.xcassets in Build */ = {isa = PBXBuildFile; fileRef = 430DFDE4FD78B3C61C897157; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		976EC76C2E66FE92DA6FC884 /* BoothRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothRootView.swift; sourceTree = "<group>"; };
+		B7A59A116ABFB6109A55E197 /* PhotoboothApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoboothApp.swift; sourceTree = "<group>"; };
+		DA0E123C7A8F0B54694DBD2C /* CameraController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraController.swift; sourceTree = "<group>"; };
+		DBBA3EB87B4B50006A7C9B30 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
+		F4CD088BCC34FC8831DC6C01 /* AdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminView.swift; sourceTree = "<group>"; };
+		B0F329220F45C1440C54A793 /* AttractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttractView.swift; sourceTree = "<group>"; };
+		4390478DB94D8ED4F006001A /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		D58D366B9679A02ED30AE9A2 /* CopiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopiesView.swift; sourceTree = "<group>"; };
+		4FCA7040F6207201790181B7 /* LayoutSelectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutSelectView.swift; sourceTree = "<group>"; };
+		DAD5AD015FFF584156C9CF60 /* PrintConfirmView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintConfirmView.swift; sourceTree = "<group>"; };
+		55EA8B9AD57706CEBF0BD9DB /* PrintingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintingView.swift; sourceTree = "<group>"; };
+		39E6949D171C8C27AA88998D /* ReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewView.swift; sourceTree = "<group>"; };
+		04536F2858C1B09365ECBFED /* ThankYouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThankYouView.swift; sourceTree = "<group>"; };
+		2324477A428B0EBC33C339E7 /* LayoutTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutTemplate.swift; sourceTree = "<group>"; };
+		93D73BF2E2F62BD67161DA3A /* PhotoLayoutRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLayoutRenderer.swift; sourceTree = "<group>"; };
+		577776360D95EC54BDAFF6BB /* PanelControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelControls.swift; sourceTree = "<group>"; };
+		EC9EB17A853DA660FA860C07 /* PanelDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelDialog.swift; sourceTree = "<group>"; };
+		DECD6FAF6EE16652553AC605 /* PanelEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelEffects.swift; sourceTree = "<group>"; };
+		87534C7CD46F89364BC5D274 /* PanelModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelModule.swift; sourceTree = "<group>"; };
+		7458AF6D2DB8BD1E722893D7 /* PanelTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelTheme.swift; sourceTree = "<group>"; };
+		02229018DD2A525A3511E737 /* PixelFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelFont.swift; sourceTree = "<group>"; };
+		B9EACF243236DD2864730308 /* PixelIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelIcons.swift; sourceTree = "<group>"; };
+		89AA481CC517DB360CCEBFAA /* AirPrintService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPrintService.swift; sourceTree = "<group>"; };
+		B2209EBAF428A744D10CFD58 /* Dither.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dither.swift; sourceTree = "<group>"; };
+		DC0395F7D1EA2BAA5C6D6E37 /* ESCPOSEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESCPOSEncoder.swift; sourceTree = "<group>"; };
+		B6E5CC121A391A4941961638 /* PrinterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterService.swift; sourceTree = "<group>"; };
+		FA91831E31F44DC2064A9ADB /* ThermalSDKService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalSDKService.swift; sourceTree = "<group>"; };
+		F4CE134099B04A08351F9DA6 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		A891FEB716DFB47E1023468E /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
+		EBFEE6D7FA634CBAB48BFDF7 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		430DFDE4FD78B3C61C897157 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		07A7A45C57C1C8CC3C76D276 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F5BF48AA40CAD7891EB709FC /* Photobooth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Photobooth.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		C66F682FA6DE68D41C231B69 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				976EC76C2E66FE92DA6FC884,
+				07A7A45C57C1C8CC3C76D276,
+				B7A59A116ABFB6109A55E197,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		26FB22275D495D1A6A677F63 /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+				DA0E123C7A8F0B54694DBD2C,
+				DBBA3EB87B4B50006A7C9B30,
+			);
+			path = Camera;
+			sourceTree = "<group>";
+		};
+		417279486B8D0E09F7D527FC /* Flow */ = {
+			isa = PBXGroup;
+			children = (
+				F4CD088BCC34FC8831DC6C01,
+				B0F329220F45C1440C54A793,
+				4390478DB94D8ED4F006001A,
+				D58D366B9679A02ED30AE9A2,
+				4FCA7040F6207201790181B7,
+				DAD5AD015FFF584156C9CF60,
+				55EA8B9AD57706CEBF0BD9DB,
+				39E6949D171C8C27AA88998D,
+				04536F2858C1B09365ECBFED,
+			);
+			path = Flow;
+			sourceTree = "<group>";
+		};
+		EFF2D0987E426A55FEB363F1 /* Layout */ = {
+			isa = PBXGroup;
+			children = (
+				2324477A428B0EBC33C339E7,
+				93D73BF2E2F62BD67161DA3A,
+			);
+			path = Layout;
+			sourceTree = "<group>";
+		};
+		879981618161CD51F8D9AACA /* Panel */ = {
+			isa = PBXGroup;
+			children = (
+				577776360D95EC54BDAFF6BB,
+				EC9EB17A853DA660FA860C07,
+				DECD6FAF6EE16652553AC605,
+				87534C7CD46F89364BC5D274,
+				7458AF6D2DB8BD1E722893D7,
+				02229018DD2A525A3511E737,
+				B9EACF243236DD2864730308,
+			);
+			path = Panel;
+			sourceTree = "<group>";
+		};
+		4AC46CDD413E221A528B1EEA /* Printing */ = {
+			isa = PBXGroup;
+			children = (
+				89AA481CC517DB360CCEBFAA,
+				B2209EBAF428A744D10CFD58,
+				DC0395F7D1EA2BAA5C6D6E37,
+				B6E5CC121A391A4941961638,
+				FA91831E31F44DC2064A9ADB,
+			);
+			path = Printing;
+			sourceTree = "<group>";
+		};
+		6DEE0CF483936F8E4216A987 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				430DFDE4FD78B3C61C897157,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		EC8BEF05AA0E700E20D46CD7 /* State */ = {
+			isa = PBXGroup;
+			children = (
+				F4CE134099B04A08351F9DA6,
+				A891FEB716DFB47E1023468E,
+				EBFEE6D7FA634CBAB48BFDF7,
+			);
+			path = State;
+			sourceTree = "<group>";
+		};
+		3C0E4E150726C1A45312B047 /* PhotoboothApp */ = {
+			isa = PBXGroup;
+			children = (
+				C66F682FA6DE68D41C231B69,
+				26FB22275D495D1A6A677F63,
+				417279486B8D0E09F7D527FC,
+				EFF2D0987E426A55FEB363F1,
+				879981618161CD51F8D9AACA,
+				4AC46CDD413E221A528B1EEA,
+				6DEE0CF483936F8E4216A987,
+				EC8BEF05AA0E700E20D46CD7,
+			);
+			path = PhotoboothApp;
+			sourceTree = "<group>";
+		};
+		2F3A6B1E78F896718625FF06 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F5BF48AA40CAD7891EB709FC,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B9340614599AB78F485950C7 = {
+			isa = PBXGroup;
+			children = (
+				3C0E4E150726C1A45312B047,
+				2F3A6B1E78F896718625FF06,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		42AEFBAE01D2DFD981F7DA7D /* Photobooth */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 354589B28580510B6EC24620;
+			buildPhases = (
+				7A70D71C385290AF96BF1031,
+				424153ED3CD079DB4DB459AF,
+				285BB1C1430063331E9F5DD0,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Photobooth;
+			productName = Photobooth;
+			productReference = F5BF48AA40CAD7891EB709FC;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					42AEFBAE01D2DFD981F7DA7D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 1F4E3D13C2320EDA50221924;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B9340614599AB78F485950C7;
+			productRefGroup = 2F3A6B1E78F896718625FF06;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				42AEFBAE01D2DFD981F7DA7D,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7A70D71C385290AF96BF1031 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3AB4D2BFB13E5A8FAC7BEB66 /* BoothRootView.swift */,
+				2A43306B5ECBBE7BD989A461 /* PhotoboothApp.swift */,
+				2CB57041D0D03A0925640F62 /* CameraController.swift */,
+				B96A4150488355E531B0C5F3 /* CameraPreview.swift */,
+				BAC8D80BB7012F4234212E9F /* AdminView.swift */,
+				6A78215F1BC4A3E2CD944478 /* AttractView.swift */,
+				EC9D1E03E889AED8B0E741C6 /* CaptureView.swift */,
+				48AB31297F16819F370AD6D7 /* CopiesView.swift */,
+				B5E0FF887D74B80DCD3D157C /* LayoutSelectView.swift */,
+				B6168CB8EB0FBA3915035E3C /* PrintConfirmView.swift */,
+				99C9678D5B30ADE1011DFB79 /* PrintingView.swift */,
+				2517217FB9BFBAAC879CF126 /* ReviewView.swift */,
+				F5032B0E5435A6E4D89F9455 /* ThankYouView.swift */,
+				19FEDAF5FC35296A01ACCF25 /* LayoutTemplate.swift */,
+				4E1BC464C22A25CB1DFC73FE /* PhotoLayoutRenderer.swift */,
+				4E58778EB318D4E9CA4391C4 /* PanelControls.swift */,
+				B881D2FC7E169E4EFD50F379 /* PanelDialog.swift */,
+				B598754EBDF478C36AD619B2 /* PanelEffects.swift */,
+				BD4FCABC7E5582A0D279F815 /* PanelModule.swift */,
+				65F3BB47F8267C503D3D1764 /* PanelTheme.swift */,
+				A660329AC608C060B6B4035A /* PixelFont.swift */,
+				40E43165BE24ECA56D76E0EB /* PixelIcons.swift */,
+				91B6B4A6ACDC7D6F849A4A88 /* AirPrintService.swift */,
+				92955D36F607E7BDDACDF1D9 /* Dither.swift */,
+				2C05B08EBA5BD59ACE4E90B1 /* ESCPOSEncoder.swift */,
+				25A6CFC3CB08520A9978453C /* PrinterService.swift */,
+				944D811BE9438C62D9A6E2CA /* ThermalSDKService.swift */,
+				9A3F04EF6EC26B9F28859A2A /* AppSettings.swift */,
+				632FA995526076CA54DF269B /* SessionState.swift */,
+				375DDC02A2610E5B42CA38A5 /* SettingsStore.swift */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		285BB1C1430063331E9F5DD0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0BF783DF727FDAAED5658BA8 /* Assets.xcassets */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		424153ED3CD079DB4DB459AF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4A43692AD8BCEEB8B727C85B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = -Onone;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C28449456A5A705A7479770B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4D8F6610AF6606489ED8DFBC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "PhotoboothApp/App/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.seanamador.photobooth.kiosk;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3DDF142C91E4BE3A6BA5A69E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "PhotoboothApp/App/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.seanamador.photobooth.kiosk;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1F4E3D13C2320EDA50221924 /* Build configuration list for PBXProject */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A43692AD8BCEEB8B727C85B,
+				C28449456A5A705A7479770B,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		354589B28580510B6EC24620 /* Build configuration list for PBXNativeTarget */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4D8F6610AF6606489ED8DFBC,
+				3DDF142C91E4BE3A6BA5A69E,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}

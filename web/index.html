@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>PHOTOBOOTH</title>
+
+<!-- Home-screen app. `apple-mobile-web-app-capable` is what actually gives
+     iOS a full-screen launch with no Safari chrome; the manifest covers
+     everything else. Status bar style is `default` because the app is white
+     — `black-translucent` would put white glyphs on a white panel. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Photobooth">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="booth.css">
+<body>
+<div class="app">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="hdr">
+    <button class="hdr-back" data-act="abandon" id="hdr-back" aria-label="back">
+      <span class="px" data-cell="4">&lt;</span>
+    </button>
+    <span class="hdr-badge ic" data-icon="camera" data-size="30" data-accent="#111111"></span>
+    <span class="hatch"></span>
+    <span class="hdr-title px" data-cell="8" id="hdr-title">PHOTOBOOTH</span>
+    <span class="hatch"></span>
+    <span class="hdr-val px" data-cell="3" id="task-right">READY</span>
+  </header>
+
+  <!-- ===================== STAGE ===================== -->
+  <main class="stage">
+
+  <!-- ---------- 1 ATTRACT ---------- -->
+  <section class="screen" data-screen="attract">
+    <div class="centre">
+      <div class="mod wide">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="5">SAY CHEESE</b>
+          <i class="ln"></i><b class="px" data-cell="3">6 LAYOUTS</b><i class="ln s"></i></div>
+        <div class="mod-in col gap24">
+          <div class="row gap20 mid">
+            <span class="ic" data-icon="eyeball" data-size="104" data-accent="#A9A2CE"></span>
+            <div class="col gap10 fill">
+              <div class="px" data-cell="4">PHOTOS IN A MINUTE</div>
+              <div class="px dim" data-cell="4">PRINTED ON THE SPOT</div>
+            </div>
+          </div>
+          <div class="hr"></div>
+          <button class="btn solid huge" data-act="start">
+            <span class="px" data-cell="7">TAP TO START</span></button>
+          <div class="row gap10 mid" id="install-hint" hidden>
+            <span class="chip lav"></span>
+            <span class="px dim" data-cell="3">SHARE &gt; ADD TO HOME SCREEN FOR FULL SCREEN</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="admin-corner" data-act="admin-corner"></div>
+  </section>
+
+  <!-- ---------- 2 LAYOUT ---------- -->
+  <section class="screen" data-screen="layout" hidden>
+    <div class="pad col gap18">
+      <div class="banner">
+        <span class="chip lav"></span>
+        <span class="ic" data-icon="info" data-size="34" data-accent="#A9A2CE"></span>
+        <span class="px" data-cell="5">HOW MANY PHOTOS?</span>
+        <span class="lead"></span>
+        <span class="px dim" data-cell="3">PICK ONE</span>
+      </div>
+      <div class="tilegrid fill" id="layout-tiles"></div>
+    </div>
+  </section>
+
+  <!-- ---------- 3 CAPTURE ---------- -->
+  <section class="screen" data-screen="capture" hidden>
+    <div class="pad col gap14">
+      <div class="mod fill">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">CAMERA</b>
+          <i class="ln"></i><b class="px" data-cell="3" id="cap-count">SHOT 1 OF 4</b><i class="ln s"></i></div>
+        <div class="mod-in tight">
+          <div class="screenwell" id="viewport">
+            <video id="video" playsinline muted autoplay></video>
+            <div class="grid-overlay"></div>
+            <div class="guide" id="guide"></div>
+            <div class="cam-msg" id="cam-msg" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="shotstrip" id="shotstrip"></div>
+    </div>
+
+    <div class="scrim" id="countdown-scrim" hidden>
+      <div class="mod dialog">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">GET READY</b>
+          <i class="ln"></i><b class="px" data-cell="3" id="cd-shot">SHOT 1 OF 4</b><i class="ln s"></i></div>
+        <div class="mod-in col gap18 centre-x">
+          <div class="numeral px" data-cell="22" id="cd-number">3</div>
+          <div class="bars" id="cd-bars"></div>
+          <div class="px" data-cell="4">HOLD STILL</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- 4 REVIEW ---------- -->
+  <section class="screen" data-screen="review" hidden>
+    <div class="pad row gap18">
+      <div class="mod sheetcol">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">PROOF</b>
+          <i class="ln"></i><i class="ln s"></i></div>
+        <div class="mod-in tight"><div class="sheetwell" id="review-sheet"></div></div>
+      </div>
+      <div class="col gap18 fill">
+        <div class="mod">
+          <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="5">HOW IT LOOKS</b>
+            <i class="ln"></i><b class="px" data-cell="3" id="review-caption">4 SHOTS</b><i class="ln s"></i></div>
+          <div class="mod-in col gap14">
+            <div class="thumbrow" id="review-thumbs"></div>
+            <div class="row gap10 mid">
+              <span class="chip lav"></span>
+              <span class="px dim" data-cell="3" id="review-hint">TAP A PHOTO TO REDO JUST THAT ONE</span>
+            </div>
+          </div>
+        </div>
+        <div class="grow"></div>
+        <div class="row wrap gap14">
+          <button class="btn tint-salmon fill" data-act="retake">
+            <span class="px" data-cell="4">RETAKE ALL</span></button>
+          <button class="btn solid fill" data-act="keep">
+            <span class="px" data-cell="5">LOOKS GOOD ></span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- 5 COPIES ---------- -->
+  <section class="screen" data-screen="copies" hidden>
+    <div class="centre">
+      <div class="mod wide">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="5">HOW MANY PRINTS</b>
+          <i class="ln"></i><b class="px" data-cell="3" id="copies-word">1 PRINT</b><i class="ln s"></i></div>
+        <div class="mod-in col gap20">
+          <div class="stepper">
+            <button class="btn sqr" data-act="copies-down"><span class="px" data-cell="7">-</span></button>
+            <div class="bigbox px" data-cell="14" id="copies-count">1</div>
+            <button class="btn sqr" data-act="copies-up"><span class="px" data-cell="7">+</span></button>
+          </div>
+          <div class="warn" id="copies-warn" hidden>
+            <span class="ic" data-icon="warning" data-size="24" data-accent="#C97F7F"></span>
+            <span class="px" data-cell="3">MAXIMUM FOR ONE SESSION</span>
+          </div>
+          <div class="hr"></div>
+          <div class="row gap14">
+            <button class="btn" style="width:230px" data-act="to-review">
+              <span class="px" data-cell="4">&lt; BACK</span></button>
+            <span class="grow"></span>
+            <button class="btn solid" style="width:300px" data-act="to-confirm">
+              <span class="px" data-cell="4">NEXT ></span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- 6 CONFIRM ---------- -->
+  <section class="screen" data-screen="confirm" hidden>
+    <div class="pad row gap18">
+      <div class="mod sheetcol">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">SHEET</b>
+          <i class="ln"></i><i class="ln s"></i></div>
+        <div class="mod-in tight"><div class="sheetwell" id="confirm-sheet"></div></div>
+      </div>
+      <div class="col gap18 fill">
+        <div class="mod">
+          <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="5">READY TO PRINT</b>
+            <i class="ln"></i><i class="ln s"></i></div>
+          <div class="mod-in"><div class="spec" id="confirm-spec"></div></div>
+        </div>
+        <div class="grow"></div>
+        <div class="row wrap gap12">
+          <button class="btn fill" data-act="to-copies"><span class="px" data-cell="4">&lt; BACK</span></button>
+          <button class="btn tint-sage" data-act="save-png"><span class="px" data-cell="4">SAVE PNG</span></button>
+          <button class="btn solid fill" data-act="print" id="print-btn">
+            <span class="px" data-cell="5">PRINT</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- 7 PRINTING ---------- -->
+  <section class="screen" data-screen="printing" hidden>
+    <div class="scrim">
+      <div class="mod dialog wide">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">PRINTING</b>
+          <i class="ln"></i><b class="px" data-cell="3">BUSY</b><i class="ln s"></i></div>
+        <div class="mod-in col gap18">
+          <div class="row gap20 mid">
+            <span class="ic spin" data-icon="cd" data-size="76" data-accent="#A9A2CE"></span>
+            <div class="col gap10">
+              <div class="px" data-cell="5" id="print-title">PRINTING YOUR PHOTO</div>
+              <div class="mono dim" id="print-status">Working…</div>
+            </div>
+          </div>
+          <div class="bars" id="print-bars"></div>
+          <div class="mono dim" id="print-note">Your photo is on its way to the printer.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- 8 THANK YOU ---------- -->
+  <section class="screen" data-screen="thankyou" hidden>
+    <div class="scrim">
+      <div class="mod dialog wide">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">DONE</b>
+          <i class="ln"></i><i class="ln s"></i></div>
+        <div class="mod-in col gap18">
+          <div class="row gap20 mid">
+            <span class="ic" data-icon="star" data-size="72" data-accent="#A8BEB2"></span>
+            <div class="col gap10">
+              <div class="px" data-cell="5" id="ty-message">PRINT COMPLETE</div>
+              <div class="px dim" data-cell="3">THANKS FOR STOPPING BY</div>
+            </div>
+          </div>
+          <div class="mono dim">Collect your photo from the printer. Returning to the start…</div>
+          <div class="row"><span class="grow"></span>
+            <button class="btn solid" style="width:220px" data-act="abandon">
+              <span class="px" data-cell="5">OK</span></button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- ERROR ---------- -->
+  <section class="screen" data-screen="failed" hidden>
+    <div class="scrim">
+      <div class="mod dialog wide alarm">
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">ERROR</b>
+          <i class="ln"></i><b class="px" data-cell="3">!</b><i class="ln s"></i></div>
+        <div class="mod-in col gap18">
+          <div class="row gap20 mid">
+            <span class="ic" data-icon="warning" data-size="72" data-accent="#C97F7F"></span>
+            <div class="col gap10">
+              <div class="px" data-cell="5">SOMETHING WENT WRONG</div>
+              <div class="mono dim" id="fail-detail"></div>
+            </div>
+          </div>
+          <div class="row wrap gap12"><span class="grow"></span>
+            <button class="btn tint-salmon" style="width:230px" data-act="abandon">
+              <span class="px" data-cell="4">START OVER</span></button>
+            <button class="btn solid" style="width:230px" data-act="print">
+              <span class="px" data-cell="4">TRY AGAIN</span></button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- ADMIN ---------- -->
+  <section class="screen" data-screen="admin" hidden>
+    <div class="pad"><div class="mod fill">
+      <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">CONTROL PANEL</b>
+        <i class="ln"></i><b class="px" data-cell="3">OPERATOR</b><i class="ln s"></i></div>
+      <div class="mod-in scroll" id="admin-body"></div>
+    </div></div>
+  </section>
+
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="ftr">
+    <span class="px" data-cell="3" id="task-left">PHOTOBOOTH</span>
+    <span class="lead"></span>
+    <span class="meter"><i id="ftr-meter"></i></span>
+    <span class="px" data-cell="3" id="task-clock">--:--</span>
+  </footer>
+
+  <div class="flash" id="flash"></div>
+</div>
+
+<script src="booth.js"></script>
+</body>
+</html>
