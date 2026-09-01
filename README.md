@@ -72,11 +72,19 @@ drawing gets smaller, the targets do not.
 are on disk. Add a file, re-run it. Object ids are derived from stable hashes,
 so an unchanged tree regenerates byte-identically.
 
-`web/` is a **working browser build** of the same booth — same flow, same
-layouts, same renderer, same look — for testing on a Mac without Xcode. Serve
-it (`python3 -m http.server 8815 --directory PhotoboothiPad/web`) and open
-http://localhost:8815; the camera needs localhost, not `file://`. See
+`web/` is a **working browser build** of the same booth — and installs to an
+iPhone or iPad Home Screen as a full-screen app with an offline cache, no
+Xcode involved. `./publish.sh` puts it on GitHub Pages. See
 [web/README.md](web/README.md).
+
+Same flow, same layouts, same renderer, same look. To run it on this Mac:
+
+```bash
+python3 -m http.server 8815 --directory PhotoboothiPad/web
+```
+
+then open http://localhost:8815. The camera needs localhost or HTTPS —
+`file://` gets no camera at all.
 
 ## The look
 
