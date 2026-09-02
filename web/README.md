@@ -49,16 +49,30 @@ triple-click the side button on the attract screen.
 
 ## Hosting
 
-**GitHub Pages.** Free, HTTPS, and it serves a folder of static files — which
-is exactly what this is. From the project root:
+Live at **<https://mixelorg-arch.github.io/photobooth/>**.
+
+From the project root, one command deploys everything:
 
 ```bash
-./publish.sh
+./publish.sh                 # or: ./publish.sh "what changed"
 ```
 
-That pushes `web/` to a `gh-pages` branch; set Settings → Pages → branch
-`gh-pages`, folder `/ (root)`. The repository has to be **public** — Pages on
-a private repository needs a paid plan. Full steps are in the script's header.
+It bumps the service-worker cache version, commits, pushes `main`, and pushes
+`web/` to the `gh-pages` branch as its root.
+
+**The cache bump is the important part.** The worker serves cache-first, so
+without a new cache name every Home Screen icon keeps running the old build
+forever — you deploy and nothing changes. `publish.sh` handles it; if you ever
+push by hand, edit `CACHE` in `sw.js` first.
+
+While developing against localhost the same thing bites: the worker will serve
+the last cached CSS and JS. Clear it in the console with
+
+```js
+for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+for (const k of await caches.keys()) await caches.delete(k);
+location.reload();
+```
 
 **Not Cloudinary.** It is a media CDN: it stores and transforms images and
 video, and serves them from per-asset URLs. It has no concept of a site root,
@@ -73,6 +87,11 @@ for the photos if you ever add uploads; not for the app.
 |---|---|
 | Start | click anywhere on the attract screen, or press **Space** |
 | Redo one photo | on the review screen, **tap the photo** — tap again to unmark |
+
+The countdown runs *on* the live preview — a small boxed numeral in the
+top-right corner, out of where a face sits, with a bar along the bottom edge.
+People need to see themselves while they pose, which a full-screen countdown
+dialog made impossible.
 | Leave a session | the **✕** in any title bar, or **Esc** |
 | Operator console | **three clicks in the top-left corner**, or **Shift+A** — passcode `1234` |
 | Full screen | **⌃⌘F** (Safari) / **⌘⇧F** (Chrome) for the real kiosk look |
