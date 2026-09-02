@@ -89,6 +89,18 @@
             <video id="video" playsinline muted autoplay></video>
             <div class="grid-overlay"></div>
             <div class="guide" id="guide"></div>
+            <!-- The countdown lives *on* the preview, not over it: a guest
+                 has to see their own face while the numbers run. -->
+            <div class="osd" id="countdown-osd" hidden>
+              <div class="cd-badge">
+                <span class="px" data-cell="2" id="cd-shot">SHOT 1 OF 4</span>
+                <span class="px" data-cell="8" id="cd-number">3</span>
+              </div>
+              <div class="cd-foot">
+                <span class="bars" id="cd-bars"></span>
+                <span class="px" data-cell="3">HOLD STILL</span>
+              </div>
+            </div>
             <div class="cam-msg" id="cam-msg" hidden></div>
           </div>
         </div>
@@ -96,17 +108,6 @@
       <div class="shotstrip" id="shotstrip"></div>
     </div>
 
-    <div class="scrim" id="countdown-scrim" hidden>
-      <div class="mod dialog">
-        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">GET READY</b>
-          <i class="ln"></i><b class="px" data-cell="3" id="cd-shot">SHOT 1 OF 4</b><i class="ln s"></i></div>
-        <div class="mod-in col gap18 centre-x">
-          <div class="numeral px" data-cell="22" id="cd-number">3</div>
-          <div class="bars" id="cd-bars"></div>
-          <div class="px" data-cell="4">HOLD STILL</div>
-        </div>
-      </div>
-    </div>
   </section>
 
   <!-- ---------- 4 REVIEW ---------- -->

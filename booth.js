@@ -871,21 +871,25 @@ async function runCaptureSequence(targets){
 }
 
 async function countdown(token){
-  const scrim = el('#countdown-scrim');
+  const osd = el('#countdown-osd');
   const total = settings.countdownSeconds;
   setPixel(el('#cd-shot'), retaking
     ? 'RETAKING ' + shotIndex
     : (session.layout.shots > 1
-        ? 'SHOT ' + shotIndex + ' OF ' + session.layout.shots : 'ONE SHOT'), 3);
-  scrim.hidden = false;
+        ? 'SHOT ' + shotIndex + ' OF ' + session.layout.shots : 'ONE SHOT'), 2);
+  osd.hidden = false;
+
+  // Deliberately small: the numeral sits in the corner of the preview so the
+  // guest keeps sight of their own face for the whole count.
+  const cell = compactStage() ? 6 : 8;
 
   for (let n = total; n >= 1; n--) {
-    if (token !== session.captureToken) { scrim.hidden = true; return; }
-    setPixel(el('#cd-number'), String(n), 22);
-    setBars('#cd-bars', n / total);
+    if (token !== session.captureToken) { osd.hidden = true; return; }
+    setPixel(el('#cd-number'), String(n), cell);
+    setBars('#cd-bars', n / total, 16);
     await sleep(1000);
   }
-  scrim.hidden = true;
+  osd.hidden = true;
 }
 
 function fireFlash(){
