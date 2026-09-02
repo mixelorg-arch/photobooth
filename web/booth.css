@@ -155,9 +155,29 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .guide{position:absolute;top:8px;bottom:8px;left:50%;transform:translateX(-50%);pointer-events:none;
        outline:var(--rule-thin) solid var(--lavender);box-shadow:0 0 0 4000px rgba(17,17,17,.55)}
 .guide[hidden]{display:none}
+/* ---------- countdown OSD, drawn over the live preview ---------- */
+/* Small and cornered on purpose. The old full-screen dialog hid the guest
+   from themselves for the whole count, which is the one moment they most
+   need the mirror. */
+.osd{position:absolute;inset:0;z-index:6;pointer-events:none}
+.osd[hidden]{display:none}
+.cd-badge{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;
+          align-items:center;gap:5px;padding:8px 12px 6px;
+          background:var(--paper);border:var(--rule) solid var(--ink)}
+.cd-foot{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;
+         gap:10px;padding:5px 10px;background:var(--paper);
+         border:var(--rule) solid var(--ink)}
+.cd-foot .bars{flex:1;height:18px;border:0;padding:0;gap:2px;display:flex}
+.cd-foot .px{flex:none}
+
 .cam-msg{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:26px;text-align:center;
          background:var(--screen);color:#EEE;font-family:var(--mono);font-size:14px;line-height:1.7;
          white-space:pre-line}
+/* A class rule that sets `display` beats the user-agent `[hidden]` rule, so
+   every element toggled by the hidden attribute needs its own. Without this
+   the panel sat opaque over the live preview forever and a guest saw a dark
+   rectangle instead of their own face. */
+.cam-msg[hidden]{display:none}
 
 /* the sheet, in its own well */
 .sheetcol{flex:0 0 min(40vw,430px)}
@@ -350,6 +370,9 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   .bigbox{width:150px;height:96px;padding-bottom:10px}
   .bigbox::after{height:7px}
   .bars{height:32px}
+  .cd-foot .bars{height:14px}
+  .cd-badge{top:8px;right:8px;padding:6px 9px 5px}
+  .cd-foot{left:8px;right:8px;bottom:8px;padding:4px 8px;gap:8px}
   .shotstrip{height:34px}
 
   .arow>label{width:100%}

@@ -183,6 +183,9 @@ struct PanelBar: View {
     var progress: Double
     var blocks: Int = 26
     var tint: Color = Panel.lavender
+    /// The OSD strip draws its own frame around the whole row, so the bar
+    /// inside it goes bare — two nested heavy borders read as a mistake.
+    var framed: Bool = true
 
     var body: some View {
         GeometryReader { geo in
@@ -194,9 +197,9 @@ struct PanelBar: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .padding(size.pick(5, 4))
-        .frame(height: size.pick(42, 32))
-        .heavyFramed()
+        .padding(framed ? size.pick(5, 4) : 0)
+        .frame(height: framed ? size.pick(42, 32) : nil)
+        .overlay { if framed { HeavyBorder() } }
     }
 }
 

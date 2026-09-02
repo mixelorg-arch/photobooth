@@ -28,6 +28,18 @@ struct CaptureView: View {
                                 mirrored: settings.mirrorPreview,
                                 guideAspect: session.layout.cellAspect)
 
+                            // The countdown sits *on* the preview, cornered,
+                            // so the guest keeps sight of their own face for
+                            // the whole count. It used to be a full-screen
+                            // dialog, which blinded them at the one moment
+                            // they most need the mirror.
+                            if let countdown = session.countdown {
+                                CountdownOSD(value: countdown,
+                                             total: settings.countdownSeconds,
+                                             caption: countdownCaption,
+                                             accent: session.layout.accent)
+                            }
+
                             if let error = session.camera.lastError {
                                 CameraMessage(text: error)
                             }
@@ -40,20 +52,15 @@ struct CaptureView: View {
                               accent: session.layout.accent)
                 }
                 .padding(size.pick(22, 14))
-
-                if let countdown = session.countdown {
-                    HatchScrim {
-                        CountdownDialog(value: countdown,
-                                        total: settings.countdownSeconds,
-                                        shot: session.shotIndex,
-                                        of: session.layout.shotCount,
-                                        retaking: session.isRetaking,
-                                        accent: session.layout.accent)
-                    }
-                    .transition(.hardCut)
-                }
             }
         }
+    }
+
+    private var countdownCaption: String {
+        if session.isRetaking { return "RETAKING \(session.shotIndex)" }
+        return session.layout.shotCount > 1
+            ? "SHOT \(session.shotIndex) OF \(session.layout.shotCount)"
+            : "ONE SHOT"
     }
 }
 
@@ -75,33 +82,47 @@ private struct CameraMessage: View {
     }
 }
 
-/// The countdown: a module with giant bitmap numerals and a segmented bar
-/// that empties as the number falls.
-private struct CountdownDialog: View {
+/// The countdown, drawn over the live preview.
+///
+/// A boxed numeral in the top-right corner — away from where a face sits —
+/// and a bar along the bottom edge. Small on purpose: the point of the
+/// preview is that people can see themselves while they pose.
+private struct CountdownOSD: View {
     @Environment(\.panelSize) private var size
     let value: Int
     let total: Int
-    let shot: Int
-    let of: Int
-    var retaking: Bool = false
+    let caption: String
     var accent: Color = Panel.lavender
 
-    private var caption: String {
-        if retaking { return "RETAKING \(shot)" }
-        return of > 1 ? "SHOT \(shot) OF \(of)" : "ONE SHOT"
-    }
-
     var body: some View {
-        PanelModule(title: "GET READY", value: caption, titleCell: 4) {
-            VStack(spacing: size.pick(18, 12)) {
-                PixelText(text: "\(value)", cell: size.pick(22, 13), colour: Panel.ink)
+        ZStack {
+            VStack(spacing: 5) {
+                PixelText(text: caption, cell: 2, colour: Panel.ink)
+                PixelText(text: "\(value)", cell: size.pick(8, 6), colour: Panel.ink)
                     .animation(nil, value: value)
-                PanelBar(progress: Double(value) / Double(max(1, total)), tint: accent)
-                PixelText(text: "HOLD STILL", cell: size.pick(4, 3))
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .background(Panel.paper)
+            .heavyFramed()
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: .topTrailing)
+            .padding(10)
+
+            HStack(spacing: 10) {
+                PanelBar(progress: Double(value) / Double(max(1, total)),
+                         blocks: 16, tint: accent, framed: false)
+                    .frame(height: size.pick(18, 14))
+                PixelText(text: "HOLD STILL", cell: 3, colour: Panel.ink)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Panel.paper)
+            .heavyFramed()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(10)
         }
-        .frame(maxWidth: 620)
-        .fixedSize(horizontal: false, vertical: true)
+        .allowsHitTesting(false)
     }
 }
