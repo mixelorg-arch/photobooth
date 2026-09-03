@@ -65,14 +65,10 @@ without a new cache name every Home Screen icon keeps running the old build
 forever — you deploy and nothing changes. `publish.sh` handles it; if you ever
 push by hand, edit `CACHE` in `sw.js` first.
 
-While developing against localhost the same thing bites: the worker will serve
-the last cached CSS and JS. Clear it in the console with
-
-```js
-for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
-for (const k of await caches.keys()) await caches.delete(k);
-location.reload();
-```
+**The worker does not register on localhost**, for exactly that reason — a
+cache-first worker hands back the last build and every edit looks like it did
+nothing. It unregisters anything an earlier visit left behind, too. To test the
+offline path on purpose, load `http://localhost:8815/?sw=1`.
 
 **Not Cloudinary.** It is a media CDN: it stores and transforms images and
 video, and serves them from per-asset URLs. It has no concept of a site root,

@@ -12,6 +12,7 @@ struct LayoutSelectView: View {
     let onClose: () -> Void
 
     @Environment(\.panelSize) private var size
+    @Environment(\.panelShort) private var short
     @State private var highlighted: String?
 
     var body: some View {
@@ -32,25 +33,33 @@ struct LayoutSelectView: View {
                 // same shape every time.
                 let columns = size.isCompact ? 2 : 3
                 let gap = size.pick(14, 10)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gap),
-                                         count: columns),
-                          spacing: gap) {
-                    ForEach(layouts) { layout in
-                        PanelTile(title: layout.name,
-                                  subtitle: layout.subtitle,
-                                  accent: layout.accent,
-                                  selected: highlighted == layout.id) {
-                            highlighted = layout.id
-                            onChoose(layout)
-                        } preview: {
-                            SheetThumbnail(template: layout, media: media,
-                                           branding: branding,
-                                           numberEmptySlots: true,
-                                           mono: mono)
+                // Rows tall enough that the sheet preview is legible. On a
+                // phone six of them may not fit, so the grid scrolls rather
+                // than shrinking every tile into a grey smudge.
+                let rowHeight: CGFloat? = size.isCompact ? (short ? 130 : 150) : nil
+                ScrollView(size.isCompact ? .vertical : []) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gap),
+                                             count: columns),
+                              spacing: gap) {
+                        ForEach(layouts) { layout in
+                            PanelTile(title: layout.name,
+                                      subtitle: layout.subtitle,
+                                      accent: layout.accent,
+                                      selected: highlighted == layout.id) {
+                                highlighted = layout.id
+                                onChoose(layout)
+                            } preview: {
+                                SheetThumbnail(template: layout, media: media,
+                                               branding: branding,
+                                               numberEmptySlots: true,
+                                               mono: mono)
+                            }
+                            .frame(minHeight: rowHeight, maxHeight: .infinity)
                         }
-                        .frame(maxHeight: .infinity)
                     }
+                    .frame(maxHeight: size.isCompact ? nil : .infinity)
                 }
+                .scrollDisabled(!size.isCompact)
                 .frame(maxHeight: .infinity)
             }
             .padding(size.pick(22, 14))

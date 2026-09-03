@@ -15,6 +15,7 @@ struct ReviewView: View {
     let onClose: () -> Void
 
     @Environment(\.panelSize) private var size
+    @Environment(\.panelShort) private var short
 
     /// What the one retake button will actually do, given what is marked.
     private var retakeTitle: String {
@@ -30,7 +31,7 @@ struct ReviewView: View {
             // Side by side where there is room, stacked where there is not.
             AdaptiveSplit(spacing: size.pick(18, 12)) {
                 PanelModule(title: "PROOF", padding: 10) {
-                    DisplayWell {
+                    DisplayWell(aspect: media.pixelSize.width / media.pixelSize.height) {
                         SheetThumbnail(template: session.layout,
                                        media: media,
                                        photos: session.photos,
@@ -38,8 +39,10 @@ struct ReviewView: View {
                                        mono: mono)
                             .padding(10)
                     }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(width: size.isCompact ? nil : 420)
+                .frame(width: size.isCompact ? nil : 420,
+                       height: size.isCompact ? (short ? 240 : 320) : nil)
             } detail: {
                 VStack(spacing: size.pick(18, 12)) {
                     PanelModule(title: "HOW IT LOOKS",

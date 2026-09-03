@@ -54,6 +54,10 @@ enum Panel {
         }
 
         static let compactBelow: CGFloat = 700
+        /// Below this height the compact rules still do not fit — an iPhone
+        /// SE, or any phone with browser bars showing. Everything gives back
+        /// a little more.
+        static let shortBelow: CGFloat = 740
     }
 
     // MARK: - Metrics
@@ -174,6 +178,10 @@ private struct PanelSizeKey: EnvironmentKey {
     static let defaultValue: Panel.Size = .regular
 }
 
+private struct PanelShortKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
 extension EnvironmentValues {
     /// Set once at the root from the measured stage; read by every component
     /// that has to change shape. Views never measure for themselves — two
@@ -181,5 +189,13 @@ extension EnvironmentValues {
     var panelSize: Panel.Size {
         get { self[PanelSizeKey.self] }
         set { self[PanelSizeKey.self] = newValue }
+    }
+
+    /// A stage too short for the compact rules as well as too narrow. Kept
+    /// separate from `panelSize` because it is a second axis: a phone can be
+    /// narrow and tall, or narrow and short, and they need different give.
+    var panelShort: Bool {
+        get { self[PanelShortKey.self] }
+        set { self[PanelShortKey.self] = newValue }
     }
 }

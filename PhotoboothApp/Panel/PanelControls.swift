@@ -262,6 +262,12 @@ struct SpecRow: View {
 /// picture rather than a control.
 struct DisplayWell<Content: View>: View {
     var showsGrid: Bool = false
+    /// Width:height the well should take. Given one, the dark ground hugs
+    /// the sheet instead of letterboxing it — on a phone that letterbox
+    /// threw away more than half the space and made every proof look like a
+    /// postage stamp. nil fills whatever frame it is given, which is what
+    /// the camera preview wants.
+    var aspect: CGFloat? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -270,8 +276,20 @@ struct DisplayWell<Content: View>: View {
             content()
             if showsGrid { DisplayGrid() }
         }
+        .modifier(OptionalAspect(aspect: aspect))
         .clipped()
         .heavyFramed()
+    }
+}
+
+private struct OptionalAspect: ViewModifier {
+    let aspect: CGFloat?
+    func body(content: Content) -> some View {
+        if let aspect {
+            content.aspectRatio(aspect, contentMode: .fit)
+        } else {
+            content
+        }
     }
 }
 

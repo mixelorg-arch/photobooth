@@ -15,12 +15,13 @@ struct PrintConfirmView: View {
     let onClose: () -> Void
 
     @Environment(\.panelSize) private var size
+    @Environment(\.panelShort) private var short
 
     var body: some View {
         PanelScreen(status: "STEP 4/4", footer: "PRINT", onBack: onClose) {
             AdaptiveSplit(spacing: size.pick(18, 12)) {
                 PanelModule(title: "SHEET", padding: 10) {
-                    DisplayWell {
+                    DisplayWell(aspect: media.pixelSize.width / media.pixelSize.height) {
                         Group {
                             if let sheet {
                                 Image(uiImage: sheet)
@@ -32,12 +33,13 @@ struct PrintConfirmView: View {
                         }
                         .padding(10)
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 // The sheet takes a share of a phone stage, never all of it:
                 // the controls under it have to fit, because a kiosk has
                 // nowhere to scroll to.
                 .frame(width: size.isCompact ? nil : 420,
-                       height: size.isCompact ? 300 : nil)
+                       height: size.isCompact ? (short ? 230 : 300) : nil)
             } detail: {
                 VStack(spacing: size.pick(18, 12)) {
                     PanelModule(title: "READY TO PRINT") {

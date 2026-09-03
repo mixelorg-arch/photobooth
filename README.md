@@ -64,6 +64,15 @@ two views disagreeing about the breakpoint is how a layout goes crooked.
   become 2x3; the header drops its hatch and badge so the wordmark keeps a
   readable size; the confirm screen shows the three lines a guest is actually
   confirming and leaves sheet size and printer to the operator.
+- **Short phones** (an SE, or any phone showing browser bars) are a second
+  axis: `panelShort` below 740pt tall. The sheet takes a smaller share,
+  padding tightens, and the layout grid scrolls rather than shrinking six
+  tiles into grey smudges.
+
+`DisplayWell` takes the *sheet's* aspect wherever it shows one, so the dark
+ground hugs the paper. Letterboxing a portrait 4x6 inside a landscape well
+threw away more than half a phone screen and made every proof look identical
+at a glance.
 
 The touch target does not scale. 68pt is the floor on every device — the
 drawing gets smaller, the targets do not.

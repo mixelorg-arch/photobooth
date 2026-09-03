@@ -163,6 +163,7 @@ struct PanelScreen<Content: View>: View {
         GeometryReader { geo in
             let size: Panel.Size = geo.size.width < Panel.Size.compactBelow
                 ? .compact : .regular
+            let short = geo.size.height < Panel.Size.shortBelow
 
             VStack(spacing: 0) {
                 PanelHeader(status: status, onBack: onBack)
@@ -174,6 +175,7 @@ struct PanelScreen<Content: View>: View {
                 PanelFooter(left: footer)
             }
             .environment(\.panelSize, size)
+            .environment(\.panelShort, short)
         }
         .background(Panel.paper)
         .heavyFramed()

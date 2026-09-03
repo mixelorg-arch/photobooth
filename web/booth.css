@@ -42,8 +42,16 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
    edge of the device rather than disappearing under a notch or a home
    indicator. On anything without insets these all resolve to 0. */
 .app{position:fixed;
-     top:env(safe-area-inset-top); right:env(safe-area-inset-right);
-     bottom:env(safe-area-inset-bottom); left:env(safe-area-inset-left);
+     top:env(safe-area-inset-top);
+     left:env(safe-area-inset-left);
+     right:env(safe-area-inset-right);
+     /* Height, not `bottom:0`. On iOS Safari the address bar and tab bar
+        overlay a fixed element anchored to the bottom, which quietly hides
+        the footer and the last row of buttons. `dvh` is the dynamic viewport
+        — it shrinks and grows with those bars — with `vh` left as the
+        fallback for anything that does not know the unit. */
+     height:calc(100vh  - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+     height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
      display:flex;flex-direction:column;background:var(--paper);
      border:var(--rule) solid var(--ink)}
 .stage{position:relative;flex:1;min-height:0}
@@ -181,8 +189,14 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 
 /* the sheet, in its own well */
 .sheetcol{flex:0 0 min(40vw,430px)}
-.sheetwell{position:relative;flex:1;min-height:0;background:var(--screen);
-           border:var(--rule) solid var(--ink)}
+/* The well takes the *sheet's* aspect, so the dark ground hugs the paper.
+   Letterboxing a portrait 4x6 inside a landscape well threw away more than
+   half the space on a phone, which is what made the proof look like a
+   postage stamp. `--sheet-aspect` is set from the chosen media. */
+.sheetwell{position:relative;flex:1;min-height:0;min-width:0;
+           aspect-ratio:var(--sheet-aspect, 2 / 3);
+           height:100%;width:auto;max-width:100%;margin-inline:auto;
+           background:var(--screen);border:var(--rule) solid var(--ink)}
 .sheetwell canvas{position:absolute;inset:10px;width:calc(100% - 20px);height:calc(100% - 20px);
                   object-fit:contain}
 
@@ -219,7 +233,10 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .tile{min-width:0;min-height:0;padding:0;border:var(--rule) solid var(--ink);
       background:var(--paper);display:flex;flex-direction:column;cursor:pointer;
       --accent:var(--lavender)}
-.tile .pv{flex:1;min-height:0;position:relative;background:var(--screen);margin:8px}
+.tile .pv{flex:1;min-height:0;min-width:0;position:relative;
+          aspect-ratio:var(--sheet-aspect, 2 / 3);
+          height:100%;width:auto;max-width:100%;margin:8px auto;
+          background:var(--screen)}
 .tile .pv canvas{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);
                  object-fit:contain}
 .tile .cap{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;
@@ -363,7 +380,18 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   .spec{gap:8px}
   .sheetwell canvas{inset:6px;width:calc(100% - 12px);height:calc(100% - 12px)}
 
-  .tilegrid{grid-template-columns:repeat(2,1fr);gap:10px}
+  /* Two columns, and rows tall enough that the sheet preview is actually
+     legible — a 65px-high well made every layout look identical. If six
+     tiles do not fit, the grid scrolls rather than shrinking them into
+     uselessness. */
+  .tilegrid{grid-template-columns:repeat(2,1fr);gap:10px;
+            grid-auto-rows:minmax(150px,1fr);
+            overflow-y:auto;overscroll-behavior:contain;min-height:0}
+  .tile .cap{padding:7px 8px;gap:6px}
+  .tile::before{height:7px}
+  .tile .pv{margin:6px auto}
+  /* The proof takes more of a phone stage now that it is not letterboxed. */
+  .sheetcol{height:38vh}
   .btn{padding:0 12px}
   .btn.huge{min-height:92px}
   .btn.sqr{width:96px;height:96px}
@@ -386,3 +414,25 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 
 /* The install hint only ever appears in a Safari tab, never in the app. */
 #install-hint[hidden]{display:none}
+
+
+/* ==================================================================== *
+ * Short stage — an iPhone SE, or any phone with the browser bars showing.
+ *
+ * The compact rules assume roughly an iPhone 15/16's height. Below that the
+ * confirm screen ran out of room and clipped its last spec row behind the
+ * button row, so everything gives back a little: the sheet takes a smaller
+ * share, module padding tightens, spec rows sit closer.
+ * ==================================================================== */
+@media (max-width: 700px) and (max-height: 740px){
+  .sheetcol{height:28vh}
+  .mod-in{padding:12px;gap:12px}
+  .mod-in.tight{padding:7px;gap:7px}
+  .spec{gap:8px}
+  .spec .v{padding:4px 7px}
+  .tilegrid{grid-auto-rows:minmax(130px,1fr)}
+  .btn.huge{min-height:80px}
+  .btn.sqr{width:84px;height:84px}
+  .bigbox{width:132px;height:84px;padding-bottom:8px}
+  .thumbrow .t{padding:6px}
+}
