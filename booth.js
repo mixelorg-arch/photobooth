@@ -1378,6 +1378,7 @@ function afterSettingChange(key){
   if (key === 'maxCopies') session.copies = Math.min(session.copies, settings.maxCopies);
   // Anything that changes how a sheet looks re-renders the tiles, so the
   // operator sees the paper change as they type.
+  if (key === 'mediaID') applySheetAspect();
   if (['mediaID', 'photoTone', 'eventName', 'printWord', 'printCaption',
        'printDate', 'sheetCounter'].includes(key)) buildLayoutTiles();
 }
@@ -1395,6 +1396,13 @@ async function listCameras(){
 
 function applyMirror(){
   video.classList.toggle('mirror', !!settings.mirrorPreview);
+}
+
+/// Publishes the chosen paper's shape as a CSS variable, so every well that
+/// shows a sheet takes the sheet's aspect rather than letterboxing it.
+function applySheetAspect(){
+  const px = mediaPixels(currentMedia());
+  document.querySelector('.app').style.setProperty('--sheet-aspect', px.w + ' / ' + px.h);
 }
 
 /* ==================================================================== *
@@ -1475,6 +1483,21 @@ function registerServiceWorker(){
   if (!('serviceWorker' in navigator)) return;
   // file:// has no service worker and does not need one.
   if (location.protocol === 'file:') return;
+
+  // Not on localhost. The worker serves cache-first, so during development
+  // it hands back the last build and every edit looks like it did nothing —
+  // which has already cost an hour of chasing a fix that was working all
+  // along. Add ?sw=1 to test the offline path deliberately.
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  const forced = new URLSearchParams(location.search).has('sw');
+  if (local && !forced) {
+    // Clear anything an earlier visit left behind, or it keeps serving.
+    navigator.serviceWorker.getRegistrations()
+      .then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+    return;
+  }
+
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
@@ -1510,6 +1533,7 @@ registerServiceWorker();
 paintIcons();
 paintPixelText();
 showInstallHintIfNeeded();
+applySheetAspect();
 applyMirror();
 updateCopies();
 buildLayoutTiles();
