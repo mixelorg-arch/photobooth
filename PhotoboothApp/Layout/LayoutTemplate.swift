@@ -16,6 +16,10 @@ struct PrintMedia: Equatable, Hashable {
     /// True for receipt-style thermal: the renderer flattens onto white and
     /// the printer service dithers to 1-bit before sending.
     let isMonochrome: Bool
+    /// A continuous roll rather than a cut sheet. There is no page to fit,
+    /// so `heightInches` is only a nominal and the receipt renderer decides
+    /// how far the paper actually feeds.
+    var isRoll: Bool = false
 
     var pixelSize: CGSize {
         CGSize(width: (widthInches * dpi).rounded(),
@@ -41,13 +45,13 @@ struct PrintMedia: Equatable, Hashable {
     static let thermal58 = PrintMedia(
         id: "thermal-58", name: "58mm Thermal Roll", shortName: "58MM THERMAL",
         widthInches: 384.0 / 203.0, heightInches: 576.0 / 203.0,
-        dpi: 203, isMonochrome: true)
+        dpi: 203, isMonochrome: true, isRoll: true)
 
     /// 80 mm roll: 576 dots across.
     static let thermal80 = PrintMedia(
         id: "thermal-80", name: "80mm Thermal Roll", shortName: "80MM THERMAL",
         widthInches: 576.0 / 203.0, heightInches: 864.0 / 203.0,
-        dpi: 203, isMonochrome: true)
+        dpi: 203, isMonochrome: true, isRoll: true)
 
     static let all: [PrintMedia] = [postcard4x6, postcard6x4, thermal58, thermal80]
 }
@@ -174,6 +178,15 @@ struct LayoutTemplate: Identifiable, Equatable {
     /// any paper instead of four squares on some of it. Whichever dimension
     /// runs out first becomes wider side mats or a deeper foot.
     var cellAspect: CGFloat? = nil
+
+    /// Blocks read top to bottom on a thermal roll. Empty on every sheet
+    /// layout — a layout is either a page or a receipt, never both.
+    var flow: [ReceiptBlock] = []
+    /// Side margin on the roll, as a fraction of its printable width.
+    var receiptPadding: CGFloat = 0.085
+
+    /// This layout prints on a roll, not a sheet.
+    var isReceipt: Bool { !flow.isEmpty }
 
     var backgroundColor: UIColor { UIColor(rgb: backgroundHex) }
     var keylineColor: UIColor { UIColor(rgb: keylineHex) }
@@ -340,12 +353,21 @@ struct LayoutTemplate: Identifiable, Equatable {
         cellAspect: 3.0 / 2.0)
 
     /// Everything the app knows how to print.
-    static let all: [LayoutTemplate] = [
+    static let sheets: [LayoutTemplate] = [
         oneFullPage, onePolaroid, twoStacked, fourGrid, fourStripDuo, sixGrid,
     ]
 
-    /// What the guest is offered on the layout screen — all of them.
-    static let guestChoices: [LayoutTemplate] = all
+    static let all: [LayoutTemplate] = sheets + receipts
+
+    /// What the guest is offered on the layout screen. Layouts are offered
+    /// by what the paper can hold: a receipt on 4x6 card and a double strip
+    /// on a till roll are both nonsense, so the paper chosen in Admin
+    /// decides which half of the list a guest ever sees.
+    static func guestChoices(for media: PrintMedia) -> [LayoutTemplate] {
+        media.isRoll ? receipts : sheets
+    }
+
+    static let guestChoices: [LayoutTemplate] = sheets
 
     static func template(id: String) -> LayoutTemplate {
         all.first { $0.id == id } ?? oneFullPage

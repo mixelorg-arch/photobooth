@@ -17,6 +17,14 @@ struct ReviewView: View {
     @Environment(\.panelSize) private var size
     @Environment(\.panelShort) private var short
 
+    /// A receipt is three times as tall as the paper it shares a media
+    /// entry with, so the well asks the renderer rather than the media.
+    private var sheetAspect: CGFloat {
+        let size = PhotoLayoutRenderer.sheetSize(template: session.layout,
+                                                 media: media, branding: branding)
+        return size.width / size.height
+    }
+
     /// What the one retake button will actually do, given what is marked.
     private var retakeTitle: String {
         switch session.marks.count {
@@ -31,7 +39,7 @@ struct ReviewView: View {
             // Side by side where there is room, stacked where there is not.
             AdaptiveSplit(spacing: size.pick(18, 12)) {
                 PanelModule(title: "PROOF", padding: 10) {
-                    DisplayWell(aspect: media.pixelSize.width / media.pixelSize.height) {
+                    DisplayWell(aspect: sheetAspect) {
                         SheetThumbnail(template: session.layout,
                                        media: media,
                                        photos: session.photos,

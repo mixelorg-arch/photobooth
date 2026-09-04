@@ -32,6 +32,9 @@ final class SessionState: ObservableObject {
     /// express "frame 3 is being redone", which is the whole point of
     /// per-frame retake.
     @Published private(set) var photos: [UIImage?] = []
+    /// When each frame was taken, parallel to `photos`. The receipt's shot
+    /// order is timed from these, so they are session data, not decoration.
+    @Published private(set) var captureTimes: [Date?] = []
     /// Slot indices the guest has marked for a retake on the review screen.
     @Published private(set) var marks: Set<Int> = []
     @Published var layout: LayoutTemplate = .oneFullPage
@@ -89,8 +92,15 @@ final class SessionState: ObservableObject {
         case .airPrint:
             printer = AirPrintService(lastPrinterURL: settings.lastPrinterURL)
         case .thermalBLE:
+            // A roll knows its own imaging width. Sending a 576-dot receipt
+            // to a head told it is 384 would rescale it — the type would
+            // shrink and the QR's modules would blur into something no
+            // phone can read — so the paper wins over the saved setting.
+            let dots = settings.media.isRoll
+                ? Int(settings.media.pixelSize.width)
+                : settings.thermalWidthDots
             printer = ThermalSDKService(savedPeripheralID: settings.thermalPeripheralID,
-                                        widthDots: settings.thermalWidthDots)
+                                        widthDots: dots)
         }
     }
 
@@ -121,6 +131,7 @@ final class SessionState: ObservableObject {
     func chooseLayout(_ template: LayoutTemplate) {
         layout = template
         photos = Array(repeating: nil, count: template.shotCount)
+        captureTimes = Array(repeating: nil, count: template.shotCount)
         marks.removeAll()
         sheet = nil
         go(.capture)
@@ -140,6 +151,7 @@ final class SessionState: ObservableObject {
         camera.stop()
         discardSessionFiles()
         photos.removeAll()
+        captureTimes.removeAll()
         marks.removeAll()
         sheet = nil
         copies = settings.defaultCopies
@@ -234,6 +246,7 @@ final class SessionState: ObservableObject {
     private func place(_ image: UIImage, at index: Int) {
         guard photos.indices.contains(index) else { return }
         photos[index] = image
+        if captureTimes.indices.contains(index) { captureTimes[index] = Date() }
         // A retake overwrites the file it replaces. The desktop booth
         // archives superseded frames instead, but there the session survives
         // and gets uploaded; here the whole folder is deleted when the guest
@@ -249,11 +262,12 @@ final class SessionState: ObservableObject {
     /// a 1200 x 1800 composite is a few milliseconds — and doing it eagerly
     /// means the confirm screen shows the real print, not an approximation.
     func compose() {
-        sheet = PhotoLayoutRenderer.render(photos: photos,
-                                           template: layout,
-                                           media: settings.media,
-                                           branding: settings.branding,
-                                           monoOverride: settings.photoMono)
+        sheet = PhotoLayoutRenderer.render(
+            photos: photos,
+            template: layout,
+            media: settings.media,
+            branding: settings.branding(for: layout, times: captureTimes),
+            monoOverride: settings.photoMono)
     }
 
     // MARK: - Print

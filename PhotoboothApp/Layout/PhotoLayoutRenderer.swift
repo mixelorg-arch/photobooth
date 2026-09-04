@@ -12,6 +12,22 @@ struct PrintBranding: Equatable {
     /// The "003." on the sheet — a running count across the event, which is
     /// what makes it read as a print run rather than decoration.
     var sequence: Int = 1
+
+    // MARK: Receipt copy
+    //
+    // Only a thermal roll asks for these; a sheet never resolves the tokens
+    // that read them.
+
+    /// One row per frame, timed from the first shutter.
+    var tracks: [ReceiptTrack] = []
+    /// How long the whole session took, as mm:ss.
+    var total: String = ""
+    /// The justified small print above the code.
+    var paragraph: String = ""
+    /// The line under the last rule.
+    var footer: String = ""
+    /// What the QR points at. Empty prints no code at all.
+    var link: String = ""
 }
 
 /// Composes 1 or 4 photographs plus a `LayoutTemplate` into one flattened,
@@ -35,6 +51,16 @@ enum PhotoLayoutRenderer {
                        branding: PrintBranding = PrintBranding(),
                        numberEmptySlots: Bool = false,
                        monoOverride: Bool? = nil) -> UIImage {
+
+        // A roll has no page to fit, so it flows instead. Same entry point
+        // either way: nothing that asks for a sheet needs to know which it
+        // got back.
+        if media.isRoll && template.isReceipt {
+            return ReceiptRenderer.render(photos: photos, template: template,
+                                          media: media, branding: branding,
+                                          numberEmptySlots: numberEmptySlots,
+                                          mono: monoOverride ?? template.mono)
+        }
 
         let size = media.pixelSize
         let format = UIGraphicsImageRendererFormat.default()
@@ -236,6 +262,56 @@ enum PhotoLayoutRenderer {
         }
     }
 
+    /// The paper's real pixel size for one layout. Fixed media answer from
+    /// their own dimensions; a roll only knows once the flow is measured, so
+    /// every well that shows the paper has to ask rather than assume.
+    static func sheetSize(template: LayoutTemplate, media: PrintMedia,
+                          branding: PrintBranding = PrintBranding()) -> CGSize {
+        guard media.isRoll, template.isReceipt else { return media.pixelSize }
+        return CGSize(width: (media.widthInches * media.dpi).rounded(),
+                      height: ReceiptRenderer.height(template: template,
+                                                     media: media,
+                                                     branding: branding))
+    }
+
+    /// Shared with the receipt renderer, which sets the same three tones.
+    static func tint(_ tone: SheetDecoration.Tone) -> UIColor { colour(tone) }
+
+    /// Aspect-fill a photograph into a rect, desaturating in place. The
+    /// receipt renderer draws its own grid but wants identical results.
+    static func drawCovering(_ image: UIImage, in rect: CGRect,
+                             fit: SlotFit, mono: Bool) {
+        guard let cg = UIGraphicsGetCurrentContext() else { return }
+        draw(image, in: rect, fit: fit, context: cg)
+        guard mono else { return }
+        cg.setBlendMode(.saturation)
+        UIColor(white: 0.5, alpha: 1).setFill()
+        cg.fill(rect)
+        cg.setBlendMode(.normal)
+    }
+
+    /// The number in an empty well. Previews only — a number must never be
+    /// able to reach paper.
+    static func drawSlotNumber(_ number: Int, in rect: CGRect, onDark: Bool) {
+        let side = min(rect.width, rect.height)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.monospacedSystemFont(ofSize: side * 0.42, weight: .black),
+            .foregroundColor: onDark ? UIColor.white.withAlphaComponent(0.35)
+                                     : UIColor.black.withAlphaComponent(0.28),
+        ]
+        let label = "\(number)" as NSString
+        let size = label.size(withAttributes: attributes)
+        label.draw(at: CGPoint(x: rect.midX - size.width / 2,
+                               y: rect.midY - size.height / 2),
+                   withAttributes: attributes)
+    }
+
+    /// Token resolution, shared with the receipt renderer.
+    static func resolveTokens(_ text: String, branding: PrintBranding,
+                              template: LayoutTemplate) -> String {
+        resolve(text, branding: branding, template: template)
+    }
+
     private static func colour(_ tone: SheetDecoration.Tone) -> UIColor {
         switch tone {
         case .ink:   return UIColor(white: 0.067, alpha: 1)
@@ -268,7 +344,25 @@ enum PhotoLayoutRenderer {
             .replacingOccurrences(of: "{n}", with: String(format: "%03d", branding.sequence))
             .replacingOccurrences(of: "{shots}", with: String(template.shotCount))
             .replacingOccurrences(of: "{sub}", with: template.subtitle)
+            // Receipt tokens. Harmless on a sheet, which never asks for them.
+            .replacingOccurrences(of: "{longdate}", with: longDate(branding.date))
+            .replacingOccurrences(of: "{total}", with: branding.total)
+            .replacingOccurrences(of: "{link}",
+                                  with: branding.link.trimmingCharacters(in: .whitespaces))
+            .replacingOccurrences(of: "{para}",
+                                  with: branding.paragraph.trimmingCharacters(in: .whitespaces))
+            .replacingOccurrences(of: "{footer}",
+                                  with: branding.footer.trimmingCharacters(in: .whitespaces))
             .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// "MAY 16, 2026" — the receipt's date line, set apart from the sheet's
+    /// dotted `dd.MM.yyyy` because a till roll writes the month out.
+    private static func longDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMMM d, yyyy"
+        return f.string(from: date).uppercased()
     }
 
     /// One run of type. `origin.y` is the **baseline**, so a line sits on a

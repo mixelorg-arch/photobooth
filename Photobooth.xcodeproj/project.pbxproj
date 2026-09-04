@@ -22,6 +22,8 @@
 		F5032B0E5435A6E4D89F9455 /* ThankYouView.swift in Build */ = {isa = PBXBuildFile; fileRef = 04536F2858C1B09365ECBFED; };
 		19FEDAF5FC35296A01ACCF25 /* LayoutTemplate.swift in Build */ = {isa = PBXBuildFile; fileRef = 2324477A428B0EBC33C339E7; };
 		4E1BC464C22A25CB1DFC73FE /* PhotoLayoutRenderer.swift in Build */ = {isa = PBXBuildFile; fileRef = 93D73BF2E2F62BD67161DA3A; };
+		CA46D839B718DC5654108E62 /* ReceiptRenderer.swift in Build */ = {isa = PBXBuildFile; fileRef = 2DD2790A43231066A8D6197F; };
+		3D5380CD3AFF7D3C128B9BC4 /* ReceiptTemplate.swift in Build */ = {isa = PBXBuildFile; fileRef = 3CF24CEF11139BC2D8C6F741; };
 		4E58778EB318D4E9CA4391C4 /* PanelControls.swift in Build */ = {isa = PBXBuildFile; fileRef = 577776360D95EC54BDAFF6BB; };
 		B881D2FC7E169E4EFD50F379 /* PanelDialog.swift in Build */ = {isa = PBXBuildFile; fileRef = EC9EB17A853DA660FA860C07; };
 		B598754EBDF478C36AD619B2 /* PanelEffects.swift in Build */ = {isa = PBXBuildFile; fileRef = DECD6FAF6EE16652553AC605; };
@@ -56,6 +58,8 @@
 		04536F2858C1B09365ECBFED /* ThankYouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThankYouView.swift; sourceTree = "<group>"; };
 		2324477A428B0EBC33C339E7 /* LayoutTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutTemplate.swift; sourceTree = "<group>"; };
 		93D73BF2E2F62BD67161DA3A /* PhotoLayoutRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLayoutRenderer.swift; sourceTree = "<group>"; };
+		2DD2790A43231066A8D6197F /* ReceiptRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptRenderer.swift; sourceTree = "<group>"; };
+		3CF24CEF11139BC2D8C6F741 /* ReceiptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptTemplate.swift; sourceTree = "<group>"; };
 		577776360D95EC54BDAFF6BB /* PanelControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelControls.swift; sourceTree = "<group>"; };
 		EC9EB17A853DA660FA860C07 /* PanelDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelDialog.swift; sourceTree = "<group>"; };
 		DECD6FAF6EE16652553AC605 /* PanelEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelEffects.swift; sourceTree = "<group>"; };
@@ -117,6 +121,8 @@
 			children = (
 				2324477A428B0EBC33C339E7,
 				93D73BF2E2F62BD67161DA3A,
+				2DD2790A43231066A8D6197F,
+				3CF24CEF11139BC2D8C6F741,
 			);
 			path = Layout;
 			sourceTree = "<group>";
@@ -268,6 +274,8 @@
 				F5032B0E5435A6E4D89F9455 /* ThankYouView.swift */,
 				19FEDAF5FC35296A01ACCF25 /* LayoutTemplate.swift */,
 				4E1BC464C22A25CB1DFC73FE /* PhotoLayoutRenderer.swift */,
+				CA46D839B718DC5654108E62 /* ReceiptRenderer.swift */,
+				3D5380CD3AFF7D3C128B9BC4 /* ReceiptTemplate.swift */,
 				4E58778EB318D4E9CA4391C4 /* PanelControls.swift */,
 				B881D2FC7E169E4EFD50F379 /* PanelDialog.swift */,
 				B598754EBDF478C36AD619B2 /* PanelEffects.swift */,

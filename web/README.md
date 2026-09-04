@@ -161,6 +161,12 @@ dialog stubbed: 3 copies produced 3 pages, every page decoded at the full
 1200 px sheet width, with `@page{size:4in 6in;margin:0}`. All three layouts
 render against all four paper sizes without error.
 
+**The 80mm receipt** prints through the same path with
+`@page{size:80mm auto;margin:0}` and the image at `72mm` wide, height auto —
+a roll feeds as far as the receipt is long rather than to a page height. The
+sheet is sent as PNG rather than JPEG for that paper: JPEG ringing around a
+QR's finder patterns is exactly what stops a phone reading it.
+
 The **camera path could not be exercised** — the tool browser blocks device
 capture. Countdown, capture and the flash are wired the same way as the rest,
 but they are the one part that has only been read, not run.

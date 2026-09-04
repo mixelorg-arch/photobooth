@@ -55,7 +55,7 @@ struct BoothRootView: View {
         case .layout:
             LayoutSelectView(layouts: store.settings.guestLayouts,
                              media: store.settings.media,
-                             branding: store.settings.branding,
+                             brandingFor: { store.settings.branding(for: $0, times: []) },
                              mono: store.settings.photoMono,
                              onChoose: { session.chooseLayout($0) },
                              onClose: { session.abandon() })
@@ -68,7 +68,8 @@ struct BoothRootView: View {
         case .review:
             ReviewView(session: session,
                        media: store.settings.media,
-                       branding: store.settings.branding,
+                       branding: store.settings.branding(for: session.layout,
+                                                         times: session.captureTimes),
                        mono: store.settings.photoMono,
                        onKeep: { session.go(.copies) },
                        onRetake: { session.retake() },

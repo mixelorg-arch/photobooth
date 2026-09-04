@@ -33,6 +33,7 @@ struct AdminView: View {
                     PrinterSection(store: store, session: session)
                     CaptureSection(store: store)
                     BrandingSection(store: store)
+                    ReceiptSection(store: store)
                     KioskSection(store: store)
 
                     HStack {
@@ -298,6 +299,40 @@ private struct CaptureSection: View {
     }
 }
 
+/// The 80 mm receipt's own copy. Only a roll prints it, so the note says
+/// plainly which paper these fields belong to rather than leaving an
+/// operator typing into fields that do nothing.
+private struct ReceiptSection: View {
+    @ObservedObject var store: SettingsStore
+
+    var body: some View {
+        AdminSection(title: "RECEIPT", icon: .printer) {
+            VStack(alignment: .leading, spacing: 14) {
+                TextRow(title: "SHOT NAMES", text: store.settings.printTracks,
+                        placeholder: "comma separated, e.g. ARRIVAL, THE TOAST") {
+                    store.settings.printTracks = $0
+                }
+                TextRow(title: "PARAGRAPH", text: store.settings.printParagraph,
+                        placeholder: "the small print above the code") {
+                    store.settings.printParagraph = $0
+                }
+                TextRow(title: "FOOTER", text: store.settings.printFooter,
+                        placeholder: "e.g. THE ART OF THE MOMENT") {
+                    store.settings.printFooter = $0
+                }
+                TextRow(title: "QR LINK", text: store.settings.printLink,
+                        placeholder: "https://… — empty prints no code") {
+                    store.settings.printLink = $0
+                }
+                AdminNote(kind: store.settings.media.isRoll ? .info : .warning,
+                          text: store.settings.media.isRoll
+                            ? "Receipt mode is on. Guests choose between the 1, 2 and 4 shot rolls; the shot order is timed from the first shutter, so those minutes are real. Leave SHOT NAMES empty for FRAME 01, FRAME 02."
+                            : "These only appear on 80mm thermal. Set PAPER above to the 80mm roll to put the booth into receipt mode.")
+            }
+        }
+    }
+}
+
 private struct BrandingSection: View {
     @ObservedObject var store: SettingsStore
 
@@ -321,7 +356,7 @@ private struct BrandingSection: View {
                 NumberRow(title: "SHEET NO.", value: store.settings.sheetCounter,
                           range: 1...999, suffix: "") { store.settings.sheetCounter = $0 }
                 AdminNote(kind: .info,
-                          text: "DISPLAY WORD is the oversized word on the sheet — a long one runs off the edge on purpose. Leave it empty to use the event name. SHEET NO. prints as \"003.\" and counts up with every print.")
+                          text: "DISPLAY WORD is the oversized word on the sheet — a long one runs off the edge on purpose, and on a receipt it is the script line under the event name. Leave it empty to use the event name. SHEET NO. prints as \"003.\" and counts up with every print.")
             }
         }
     }

@@ -17,11 +17,20 @@ struct PrintConfirmView: View {
     @Environment(\.panelSize) private var size
     @Environment(\.panelShort) private var short
 
+    /// The composed sheet is the truth about how long the paper is; the
+    /// media only knows a nominal for a roll.
+    private var paper: CGSize {
+        sheet?.size ?? PhotoLayoutRenderer.sheetSize(template: layout, media: media)
+    }
+    /// A roll is not a sheet, and saying so beside "80MM THERMAL" is the
+    /// whole point of the spec block.
+    private var paperWord: String { media.isRoll ? "ROLL" : "SHEET" }
+
     var body: some View {
         PanelScreen(status: "STEP 4/4", footer: "PRINT", onBack: onClose) {
             AdaptiveSplit(spacing: size.pick(18, 12)) {
-                PanelModule(title: "SHEET", padding: 10) {
-                    DisplayWell(aspect: media.pixelSize.width / media.pixelSize.height) {
+                PanelModule(title: paperWord, padding: 10) {
+                    DisplayWell(aspect: paper.width / paper.height) {
                         Group {
                             if let sheet {
                                 Image(uiImage: sheet)
@@ -54,8 +63,8 @@ struct PrintConfirmView: View {
                             SpecRow(key: "COPIES",
                                     value: copies == 1 ? "1 PRINT" : "\(copies) PRINTS")
                             if !size.isCompact {
-                                SpecRow(key: "SHEET",
-                                        value: "\(Int(media.pixelSize.width))x\(Int(media.pixelSize.height)) / \(Int(media.dpi)) DPI")
+                                SpecRow(key: paperWord,
+                                        value: "\(Int(paper.width))x\(Int(paper.height)) / \(Int(media.dpi)) DPI")
                                 SpecRow(key: "PRINTER", value: printerName)
                                 SpecRow(key: "VIA", value: printerTarget.displayName)
                             }

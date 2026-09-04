@@ -6,7 +6,9 @@ import SwiftUI
 struct LayoutSelectView: View {
     let layouts: [LayoutTemplate]
     let media: PrintMedia
-    var branding: PrintBranding = PrintBranding()
+    /// Dressing per layout, not one for all of them: a receipt's shot order
+    /// has one row per frame, so the tile has to know which layout it is.
+    var brandingFor: (LayoutTemplate) -> PrintBranding = { _ in PrintBranding() }
     var mono: Bool = true
     let onChoose: (LayoutTemplate) -> Void
     let onClose: () -> Void
@@ -31,12 +33,17 @@ struct LayoutSelectView: View {
                 // a tablet, 2 x 3 on a phone. A flexible column count packs
                 // four across and leaves a ragged row — a kiosk wants the
                 // same shape every time.
-                let columns = size.isCompact ? 2 : 3
+                // Receipts are narrow and very tall: three across reads,
+                // two across wastes the stage.
+                let receipts = layouts.first?.isReceipt == true
+                let columns = size.isCompact ? (receipts ? 3 : 2) : 3
                 let gap = size.pick(14, 10)
                 // Rows tall enough that the sheet preview is legible. On a
                 // phone six of them may not fit, so the grid scrolls rather
                 // than shrinking every tile into a grey smudge.
-                let rowHeight: CGFloat? = size.isCompact ? (short ? 130 : 150) : nil
+                let rowHeight: CGFloat? = size.isCompact
+                    ? (receipts ? (short ? 260 : 340) : (short ? 130 : 150))
+                    : nil
                 ScrollView(size.isCompact ? .vertical : []) {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gap),
                                              count: columns),
@@ -50,7 +57,7 @@ struct LayoutSelectView: View {
                                 onChoose(layout)
                             } preview: {
                                 SheetThumbnail(template: layout, media: media,
-                                               branding: branding,
+                                               branding: brandingFor(layout),
                                                numberEmptySlots: true,
                                                mono: mono)
                             }
@@ -91,10 +98,12 @@ struct SheetThumbnail: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             } else {
+                let paper = PhotoLayoutRenderer.sheetSize(template: template,
+                                                          media: media,
+                                                          branding: branding)
                 Rectangle()
                     .fill(Color(uiColor: template.backgroundColor))
-                    .aspectRatio(media.pixelSize.width / media.pixelSize.height,
-                                 contentMode: .fit)
+                    .aspectRatio(paper.width / paper.height, contentMode: .fit)
             }
         }
         .task(id: cacheKey) { rendered = compose() }
