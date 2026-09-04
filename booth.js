@@ -189,6 +189,12 @@ const MEDIA = {
                    shortName:'A6',           w:4.134, h:5.827, dpi:300},
   'letter':       {id:'letter',       name:'US Letter (plain paper test)',
                    shortName:'US LETTER',    w:8.5,   h:11,    dpi:200},
+  /* An 80mm thermal roll. 72mm of that is printable on every common head,
+   * and at 203dpi that is 576 dots — the width nearly every ESC/POS printer
+   * expects. Height is not a paper size at all: a receipt is as long as its
+   * content, so `flow` tells the renderer to measure instead of fit. */
+  'thermal-80':   {id:'thermal-80',   name:'80mm Thermal Roll (receipt)',
+                   shortName:'80MM ROLL',    w:576/203, h:0,   dpi:203, flow:true},
 };
 const mediaPixels = m => ({w: Math.round(m.w * m.dpi), h: Math.round(m.h * m.dpi)});
 
@@ -308,6 +314,82 @@ const LAYOUTS = [
     ] },
 ];
 
+/* ------------------------------------------------------------------ *
+ * Receipt layouts — 80mm thermal.
+ *
+ * A till roll is not a sheet, so these are a *flow* of blocks read top to
+ * bottom rather than slots on a page. The head is shared between all three
+ * so the wordmark, the shot order and the foot can only ever be changed in
+ * one place; the layouts differ solely in how the photographs sit.
+ *
+ * Extra tokens here: {longdate} {total} {link} {para} {footer}.
+ * ------------------------------------------------------------------ */
+const RECEIPT_HEAD = [
+  {t:'gap', h:.055},
+  // The wordmark: the event set heavy, the display word beneath it in script.
+  {t:'runs', lines:[[{text:'{event}', size:.150, weight:800, face:'sans',
+                      tracking:-.025, case:'upper', fit:.86}]]},
+  {t:'runs', tight:.038, lines:[[{text:'{word}', size:.135, face:'script',
+                                  italic:true, fit:.76}]]},
+  {t:'gap', h:.040},
+  {t:'runs', lines:[[{text:'SHOT ORDER', size:.038, tracking:.30}]]},
+  {t:'gap', h:.014},
+  {t:'runs', lines:[[{text:'{longdate}', size:.030, tracking:.10, colour:'dim'}]]},
+  {t:'gap', h:.032},
+  {t:'rule', weight:.0045, dash:.014, gap:.011},
+  {t:'gap', h:.022},
+  // One row per frame, timed from the first shutter — a real running order,
+  // not decoration.
+  {t:'tracks', size:.033, leading:1.9},
+  {t:'gap', h:.012},
+  {t:'rule', weight:.0045, dash:.014, gap:.011},
+  {t:'gap', h:.020},
+  {t:'row', left:'TOTAL', right:'{total}', size:.033},
+  {t:'gap', h:.022},
+  {t:'rule', weight:.0045, dash:.014, gap:.011},
+  {t:'gap', h:.055},
+];
+const RECEIPT_FOOT = [
+  {t:'gap', h:.060},
+  {t:'para', text:'{para}', size:.030, leading:1.75, indent:.055},
+  {t:'gap', h:.055},
+  {t:'runs', lines:[[{text:'ALL RIGHTS RESERVED', size:.028, face:'serif',
+                      italic:true, tracking:.06}]]},
+  {t:'gap', h:.038},
+  // Skipped whole when no link is set — a QR that goes nowhere is worse
+  // than no QR at all.
+  {t:'qr', size:.36},
+  {t:'gap', h:.045},
+  {t:'rule', weight:.0045, dash:.014, gap:.011},
+  {t:'gap', h:.030},
+  {t:'runs', lines:[[{text:'{footer}', size:.031, tracking:.22, case:'upper'}]]},
+  {t:'gap', h:.075},
+];
+const receiptSlots = n => Array.from({length: n}, (_, i) => ({x:0, y:0, w:1, h:1, src:i}));
+
+LAYOUTS.push(
+  { id:'receipt-1', name:'1 SHOT', subtitle:'RECEIPT', accent:'#9BA3A3',
+    receipt:true, slots:receiptSlots(1), mono:true, cellAspect:4/5,
+    pad:.085, background:'#FFFFFF',
+    flow:[...RECEIPT_HEAD,
+          {t:'photos', cols:1, aspect:4/5},
+          ...RECEIPT_FOOT] },
+
+  { id:'receipt-2', name:'2 SHOTS', subtitle:'RECEIPT', accent:'#A9A2CE',
+    receipt:true, slots:receiptSlots(2), mono:true, cellAspect:1,
+    pad:.085, background:'#FFFFFF',
+    flow:[...RECEIPT_HEAD,
+          {t:'photos', cols:1, aspect:1, gap:.022},
+          ...RECEIPT_FOOT] },
+
+  { id:'receipt-4', name:'4 SHOTS', subtitle:'RECEIPT', accent:'#C97F7F',
+    receipt:true, slots:receiptSlots(4), mono:true, cellAspect:1,
+    pad:.085, background:'#FFFFFF',
+    flow:[...RECEIPT_HEAD,
+          {t:'photos', cols:2, aspect:1, gap:.020},
+          ...RECEIPT_FOOT] },
+);
+
 // Distinct photographs a layout needs. Derived, never hand-written: a slot
 // list and a shot count that disagree is a bug waiting to happen.
 LAYOUTS.forEach(l => {
@@ -322,6 +404,10 @@ const layoutById = id => LAYOUTS.find(l => l.id === id) || LAYOUTS[0];
  * so a tile can never disagree with the paper.
  * ==================================================================== */
 function renderSheet(photos, tpl, media, branding, scale, opts){
+  // A roll has no page to fit, so it flows instead. Same entry point either
+  // way: nothing that asks for a sheet needs to know which it got.
+  if (media.flow) return renderReceipt(photos, tpl, media, branding, scale, opts || {});
+
   const px = mediaPixels(media);
   const W = Math.round(px.w * (scale || 1)), H = Math.round(px.h * (scale || 1));
   const c = document.createElement('canvas');
@@ -466,6 +552,12 @@ function resolveToken(text, branding, tpl){
     .replace(/\{word\}/g,    ((branding.word || branding.event) || '').trim())
     .replace(/\{shots\}/g,   String(tpl.shots))
     .replace(/\{sub\}/g,     tpl.subtitle)
+    // Receipt tokens. Harmless on a sheet, which simply never asks for them.
+    .replace(/\{longdate\}/g, longDate())
+    .replace(/\{total\}/g,   branding.total  || '')
+    .replace(/\{link\}/g,    (branding.link   || '').trim())
+    .replace(/\{para\}/g,    (branding.para   || '').trim())
+    .replace(/\{footer\}/g,  (branding.footer || '').trim())
     .trim();
 }
 
@@ -501,33 +593,53 @@ function drawDecor(g, region, tpl, branding){
   }
 }
 
-/* One text run, drawn character by character so letter-spacing is identical
- * in every browser and matches the Swift build's `.kern`. `ctx.letterSpacing`
- * would be shorter but is not old enough to rely on. */
-function drawRun(g, text, o){
-  const chars = [...text];
-  const face = ' "Helvetica Neue", Helvetica, Arial, sans-serif';
-  const font = s => (o.weight >= 800 ? '800 ' : o.weight >= 700 ? '700 ' : '400 ') + s + 'px' + face;
+/* The four faces the two output languages use. The sheet is a magazine and
+ * sets in the grotesque; the receipt is a till roll and sets in Courier,
+ * with a script for the wordmark and an italic serif for the small print.
+ * All four ship with macOS and iOS, so nothing has to be downloaded — a
+ * font that fails to load would silently reflow a guest's souvenir. */
+const FACE = {
+  sans:   '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  mono:   '"Courier New", Courier, ui-monospace, Menlo, monospace',
+  script: '"Snell Roundhand", "Apple Chancery", "Brush Script MT", cursive',
+  serif:  'Georgia, "Times New Roman", Times, serif',
+};
 
+const runFont = (o, size) =>
+  (o.italic ? 'italic ' : '') +
+  (o.weight >= 800 ? '800 ' : o.weight >= 700 ? '700 ' : '400 ') +
+  size + 'px ' + (o.face || FACE.sans);
+
+/* Width of a run, and the size it shrank to if it was given a limit. Shared
+ * with the receipt's flow, which has to know how tall a block is before
+ * anything is drawn. */
+function runMetrics(g, chars, o){
   const measure = s => {
-    g.font = font(s);
+    g.font = runFont(o, s);
     let w = 0;
     for (const ch of chars) w += g.measureText(ch).width;
     return w + (o.tracking * (s / o.size)) * Math.max(0, chars.length - 1);
   };
-
   let size = o.size;
   if (o.maxWidth) {
     while (size > 4 && measure(size) > o.maxWidth) size -= Math.max(1, size * 0.04);
   }
-  const total = measure(size);
-  const tracking = o.tracking * (size / o.size);
+  return {size, width: measure(size), tracking: o.tracking * (size / o.size)};
+}
+
+/* One text run, drawn character by character so letter-spacing is identical
+ * in every browser and matches the Swift build's `.kern`. `ctx.letterSpacing`
+ * would be shorter but is not old enough to rely on. Returns the width drawn,
+ * which is how the justified paragraph steps from word to word. */
+function drawRun(g, text, o){
+  const chars = [...text];
+  const {size, width, tracking} = runMetrics(g, chars, o);
 
   let x = o.x;
-  if (o.align === 'right')  x = o.x - total;
-  if (o.align === 'centre') x = o.x - total / 2;
+  if (o.align === 'right')  x = o.x - width;
+  if (o.align === 'centre') x = o.x - width / 2;
 
-  g.font = font(size);
+  g.font = runFont(o, size);
   g.fillStyle = o.colour;
   g.textAlign = 'left';
   g.textBaseline = 'alphabetic';
@@ -535,7 +647,288 @@ function drawRun(g, text, o){
     g.fillText(ch, x, o.y);
     x += g.measureText(ch).width + tracking;
   }
+  return width;
 }
+/* ==================================================================== *
+ * The receipt renderer — 80mm thermal roll.
+ *
+ * A till roll has no page. Its height is whatever the content adds up to,
+ * so this is a *flow* of blocks rather than the sheet renderer's absolute
+ * placement: every block measures itself, the heights sum to the canvas,
+ * and the same list then draws into it. Measure and draw share one switch
+ * so the two passes cannot drift apart.
+ *
+ * Every size is a fraction of the roll's printable width, exactly like the
+ * sheet's decor, so a layout stays correct if the head's dpi ever changes.
+ * ==================================================================== */
+const scratchCtx = document.createElement('canvas').getContext('2d');
+
+const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY',
+                'AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+function longDate(d){
+  const t = d || new Date();
+  return MONTHS[t.getMonth()] + ' ' + t.getDate() + ', ' + t.getFullYear();
+}
+const mmss = s => {
+  s = Math.max(0, Math.round(s));
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+};
+
+/* Text options for one receipt segment, in device pixels. */
+const segOpts = (s, W) => ({
+  size: s.size * W,
+  tracking: (s.tracking || 0) * s.size * W,
+  weight: s.weight || 400,
+  italic: !!s.italic,
+  face: FACE[s.face || 'mono'],
+  colour: s.colour === 'dim' ? 'rgba(17,17,17,0.55)' : INK,
+  maxWidth: s.fit ? s.fit * W : null,
+});
+
+/* Lay the flow out and return where every block lands. Nothing is drawn, so
+ * this is also how the confirm screen and the sheet wells learn how long the
+ * receipt will be before there is a canvas. */
+function receiptPlan(tpl, brand, W, opts){
+  const g = scratchCtx;
+  const pad = (tpl.pad || 0.08) * W;
+  const cw = W - pad * 2;
+  const items = [];
+  let y = 0;
+
+  for (const b of (tpl.flow || [])) {
+    const measured = receiptMeasure(b, tpl, brand, W, cw, g);
+    if (measured === null) continue;          // this block has nothing to say
+    if (b.tight) y -= b.tight * W;
+    items.push({b, y, h: measured.h, lines: measured.lines});
+    y += measured.h;
+  }
+  return {width: W, height: Math.max(1, Math.round(y)), items, pad, cw};
+}
+
+function receiptMeasure(b, tpl, brand, W, cw, g){
+  switch (b.t) {
+    case 'gap':  return {h: b.h * W};
+    case 'rule': return {h: Math.max(1, (b.weight || 0.004) * W)};
+
+    case 'runs': {
+      const lines = (b.lines || []).map(line => {
+        const segs = line
+          .map(s => Object.assign({}, s, {text: receiptText(s.text, brand, tpl)}))
+          .filter(s => s.text)
+          .map(s => Object.assign(s, {text: s.case === 'upper' ? s.text.toUpperCase() : s.text}));
+        if (!segs.length) return null;
+        const space = (b.space === undefined ? 0.22 : b.space);
+        let width = 0;
+        segs.forEach((s, i) => {
+          const o = segOpts(s, W);
+          const m = runMetrics(g, [...s.text], o);
+          s._o = o; s._size = m.size; s._w = m.width;
+          width += m.width + (i ? space * o.size : 0);
+        });
+        const cap = Math.max(...segs.map(s => s._size));
+        return {segs, width, cap, h: cap * (b.leading || 1.12), space};
+      }).filter(Boolean);
+      if (!lines.length) return null;
+      return {h: lines.reduce((s, l) => s + l.h, 0), lines};
+    }
+
+    case 'row':
+      if (!receiptText(b.right, brand, tpl)) return null;
+      return {h: b.size * W * (b.leading || 1.7)};
+
+    case 'tracks': {
+      const rows = brand.tracks || [];
+      if (!rows.length) return null;
+      return {h: rows.length * b.size * W * (b.leading || 1.85)};
+    }
+
+    case 'photos': {
+      const cols = b.cols || 1, rows = Math.ceil(tpl.shots / cols);
+      const gap = (b.gap || 0) * W;
+      const cellW = (cw - gap * (cols - 1)) / cols;
+      return {h: rows * (cellW / (b.aspect || 1)) + gap * (rows - 1)};
+    }
+
+    case 'para': {
+      const text = receiptText(b.text, brand, tpl);
+      if (!text) return null;
+      const lines = wrapParagraph(g, text, b, W, cw);
+      return {h: lines.length * b.size * W * (b.leading || 1.7), lines};
+    }
+
+    case 'qr':
+      if (!receiptText(b.text || '{link}', brand, tpl)) return null;
+      return {h: b.size * W};
+  }
+  return null;
+}
+
+/* Greedy word wrap, with the first line indented like the reference. */
+function wrapParagraph(g, text, b, W, cw){
+  const o = segOpts(b, W);
+  const indent = (b.indent || 0) * W;
+  const width = words => runMetrics(g, [...words.join(' ')], o).width;
+  const lines = [];
+  let cur = [], limit = cw - indent;
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (cur.length && width(cur.concat(word)) > limit) {
+      lines.push({words: cur, indent: lines.length === 0 ? indent : 0});
+      cur = [word]; limit = cw;
+    } else cur.push(word);
+  }
+  if (cur.length) lines.push({words: cur, indent: lines.length === 0 ? indent : 0, last: true});
+  if (lines.length) lines[lines.length - 1].last = true;
+  return lines;
+}
+
+function receiptText(text, brand, tpl){
+  return text === undefined ? '' : resolveToken(text, brand, tpl);
+}
+
+function renderReceipt(photos, tpl, media, brand, scale, opts){
+  const W = Math.round(Math.round(media.w * media.dpi) * (scale || 1));
+  const plan = receiptPlan(tpl, brand, W, opts);
+  const c = document.createElement('canvas');
+  c.width = plan.width; c.height = plan.height;
+  const g = c.getContext('2d');
+  g.fillStyle = tpl.background || '#FFFFFF';
+  g.fillRect(0, 0, c.width, c.height);
+  drawReceipt(g, plan, tpl, brand, photos, W, opts);
+  return c;
+}
+
+function drawReceipt(g, plan, tpl, brand, photos, W, opts){
+  const pad = plan.pad, cw = plan.cw;
+
+  for (const item of plan.items) {
+    const b = item.b, y = item.y;
+    switch (b.t) {
+
+      case 'rule': {
+        const weight = Math.max(1, (b.weight || 0.004) * W);
+        g.fillStyle = INK;
+        if (b.dash) {
+          const seg = b.dash * W, gap = (b.gap === undefined ? b.dash * 0.8 : b.gap) * W;
+          for (let x = pad; x < pad + cw - 0.5; x += seg + gap)
+            g.fillRect(x, y, Math.min(seg, pad + cw - x), weight);
+        } else {
+          g.fillRect(pad, y, cw, weight);
+        }
+        break;
+      }
+
+      case 'runs': {
+        let ly = y;
+        for (const line of item.lines) {
+          const baseline = ly + line.cap * 0.80;
+          let x = b.align === 'right'  ? pad + cw - line.width
+                : b.align === 'left'   ? pad
+                : pad + (cw - line.width) / 2;
+          for (const s of line.segs) {
+            drawRun(g, s.text, Object.assign({}, s._o, {x, y: baseline, align: 'left'}));
+            x += s._w + line.space * s._o.size;
+          }
+          ly += line.h;
+        }
+        break;
+      }
+
+      case 'row': {
+        const o = segOpts(b, W);
+        const baseline = y + o.size * 0.80;
+        const left = receiptText(b.left, brand, tpl).toUpperCase();
+        const right = receiptText(b.right, brand, tpl);
+        if (left)  drawRun(g, left,  Object.assign({}, o, {x: pad, y: baseline, align: 'left'}));
+        if (right) drawRun(g, right, Object.assign({}, o, {x: pad + cw, y: baseline, align: 'right'}));
+        break;
+      }
+
+      case 'tracks': {
+        const o = segOpts(b, W);
+        const step = b.size * W * (b.leading || 1.85);
+        (brand.tracks || []).forEach((track, i) => {
+          const baseline = y + i * step + o.size * 0.80;
+          drawRun(g, track.label.toUpperCase(),
+                  Object.assign({}, o, {x: pad, y: baseline, align: 'left',
+                                        maxWidth: cw * 0.72}));
+          drawRun(g, track.time,
+                  Object.assign({}, o, {x: pad + cw, y: baseline, align: 'right', maxWidth: null}));
+        });
+        break;
+      }
+
+      case 'photos': {
+        const cols = b.cols || 1, n = tpl.shots;
+        const gap = (b.gap || 0) * W;
+        const cellW = (cw - gap * (cols - 1)) / cols;
+        const cellH = cellW / (b.aspect || 1);
+        const mono = opts.mono !== undefined ? opts.mono : tpl.mono;
+        for (let i = 0; i < n; i++) {
+          const r = {x: pad + (i % cols) * (cellW + gap),
+                     y: y + Math.floor(i / cols) * (cellH + gap),
+                     w: cellW, h: cellH};
+          g.save();
+          g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip();
+          const photo = photos && photos[i];
+          if (photo) {
+            // Thermal paper is one bit deep. Grey is the honest preview of
+            // what the head will dither, and colour would be a lie.
+            if (mono) g.filter = 'grayscale(1) contrast(1.08)';
+            drawCovering(g, photo, r, 'fill');
+            g.filter = 'none';
+          } else {
+            g.fillStyle = 'rgba(0,0,0,0.10)';
+            g.fillRect(r.x, r.y, r.w, r.h);
+            if (opts.numberEmptySlots) {
+              g.fillStyle = 'rgba(0,0,0,0.28)';
+              g.textAlign = 'center'; g.textBaseline = 'middle';
+              g.font = '900 ' + Math.round(Math.min(r.w, r.h) * 0.42) +
+                       'px ui-monospace, Menlo, monospace';
+              g.fillText(String(i + 1), r.x + r.w / 2, r.y + r.h / 2);
+            }
+          }
+          g.restore();
+        }
+        break;
+      }
+
+      case 'para': {
+        const o = segOpts(b, W);
+        const step = b.size * W * (b.leading || 1.7);
+        item.lines.forEach((line, i) => {
+          const baseline = y + i * step + o.size * 0.80;
+          const x0 = pad + line.indent;
+          const room = cw - line.indent;
+          const natural = runMetrics(g, [...line.words.join(' ')], o).width;
+          // Justified, like the reference — every line but the last is set
+          // to the full measure by opening the word spaces.
+          const extra = (!line.last && line.words.length > 1)
+            ? (room - natural) / (line.words.length - 1) : 0;
+          const space = runMetrics(g, [' '], o).width;
+          let x = x0;
+          for (const word of line.words) {
+            x += drawRun(g, word, Object.assign({}, o, {x, y: baseline, align: 'left'}))
+               + space + extra;
+          }
+        });
+        break;
+      }
+
+      case 'qr': {
+        const link = receiptText(b.text || '{link}', brand, tpl);
+        const box = b.size * W;
+        try {
+          QR.draw(g, link, {x: pad + (cw - box) / 2, y, size: box}, INK);
+        } catch (err) {
+          // A link too long for version 10 must not take the print with it.
+          console.warn('QR skipped:', err.message);
+        }
+        break;
+      }
+    }
+  }
+}
+
 
 function isDark(hex){
   const n = parseInt(hex.slice(1), 16);
@@ -562,7 +955,8 @@ const DEFAULTS = {
   maxCopies: 10,
   mediaID: 'postcard-4x6',
   guestLayoutIDs: ['one-full', 'one-polaroid', 'two-stack',
-                   'four-grid', 'four-strip-duo', 'six-grid'],
+                   'four-grid', 'four-strip-duo', 'six-grid',
+                   'receipt-1', 'receipt-2', 'receipt-4'],
   eventName: '',
   printCaption: '',
   printDate: true,
@@ -572,6 +966,17 @@ const DEFAULTS = {
   sheetCounter: 1,
   /// Photographs are monochrome to match the print design. MONO or COLOUR.
   photoTone: 'mono',
+  /* --- the receipt, on 80mm thermal --- */
+  /// Names for the shot-order rows, comma separated. Falls back to FRAME 01.
+  printTracks: '',
+  /// The justified paragraph above the QR.
+  printPara: 'Printed the moment it happened, on the paper it happened on. ' +
+             'No filter, no second take, no cloud. Some things are worth ' +
+             'holding rather than scrolling.',
+  /// The line under the last rule.
+  printFooter: 'THE ART OF THE MOMENT',
+  /// What the QR points at. Empty prints no code at all.
+  printLink: '',
   idleReturnSeconds: 90,
   thankYouSeconds: 6,
   adminPasscode: '1234',
@@ -602,13 +1007,50 @@ function saveSettings(){
   try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch {}
 }
 const currentMedia = () => MEDIA[settings.mediaID] || MEDIA['postcard-4x6'];
+
+/* Layouts are offered by what the paper can hold. A receipt on 4x6 card and
+ * a double strip on a till roll are both nonsense, so the paper chosen in
+ * Admin decides which half of the list a guest ever sees — one switch turns
+ * the whole booth into a receipt printer. */
 const guestLayouts = () => {
+  const flow = !!currentMedia().flow;
+  const pool = LAYOUTS.filter(l => !!l.receipt === flow);
   const found = settings.guestLayoutIDs
-    .map(id => LAYOUTS.find(l => l.id === id))
+    .map(id => pool.find(l => l.id === id))
     .filter(Boolean);
-  return found.length ? found : LAYOUTS;
+  return found.length ? found : pool;
 };
-const branding = () => ({
+/* The layout a preview should measure against. `session.layout` is whatever
+ * the last guest picked, which after a paper change can belong to the other
+ * kind of output entirely. */
+const activeLayout = () =>
+  (!!session.layout.receipt === !!currentMedia().flow) ? session.layout : guestLayouts()[0];
+
+/* The shot-order rows. One per frame, timed from the first shutter, so the
+ * receipt lists what actually happened rather than invented durations. A
+ * frame with no timestamp yet reads "--:--" — a preview must never put a
+ * made-up number where a real one will go. */
+function receiptTracks(tpl){
+  const names = (settings.printTracks || '').split(/\s*[,;\n]\s*/).filter(Boolean);
+  const times = session.times || [];
+  const taken = times.filter(Boolean);
+  const first = taken.length ? Math.min(...taken) : null;
+  const rows = [];
+  for (let i = 0; i < tpl.shots; i++) {
+    rows.push({
+      label: names[i] || ('FRAME ' + String(i + 1).padStart(2, '0')),
+      time: (first && times[i]) ? mmss((times[i] - first) / 1000) : '--:--',
+    });
+  }
+  return rows;
+}
+function sessionTotal(){
+  const taken = (session.times || []).filter(Boolean);
+  if (taken.length < 2) return taken.length ? mmss(0) : '--:--';
+  return mmss((Math.max(...taken) - Math.min(...taken)) / 1000);
+}
+
+const branding = (tpl) => ({
   event: settings.eventName,
   caption: settings.printCaption,
   date: settings.printDate,
@@ -616,7 +1058,22 @@ const branding = () => ({
   // The "003." on the sheet. A real running count across the event, which is
   // what makes it read as a print run rather than decoration.
   sequence: settings.sheetCounter,
+  // Receipt copy. The rows need the layout, because the number of them is
+  // the number of frames it takes.
+  para: settings.printPara,
+  footer: settings.printFooter,
+  link: settings.printLink,
+  tracks: tpl ? receiptTracks(tpl) : [],
+  total: sessionTotal(),
 });
+
+/* How big the paper is for a given layout. Fixed media answer from their own
+ * dimensions; a roll only knows once the flow has been measured. */
+function sheetPixels(tpl, media){
+  if (!media.flow) return mediaPixels(media);
+  const w = Math.round(media.w * media.dpi);
+  return {w, h: receiptPlan(tpl, branding(tpl), w, {}).height};
+}
 
 /* ==================================================================== *
  * Camera
@@ -702,6 +1159,9 @@ const session = {
      it has been taken. An array that grows as photos arrive cannot express
      "frame 3 is being redone", which is the whole point of per-frame retake. */
   photos: [],
+  /* When each frame was taken, parallel to `photos`. The receipt's shot
+     order is timed from these, so they are session data, not decoration. */
+  times: [],
   /* Slot indices the guest has marked for a retake, on the review screen. */
   marks: new Set(),
   layout: LAYOUTS[0],
@@ -768,6 +1228,7 @@ function restartIdle(){
 function begin(){
   keepAwake();
   session.photos = [];
+  session.times = [];
   session.marks.clear();
   session.sheet = null;
   session.copies = settings.defaultCopies;
@@ -781,7 +1242,9 @@ function begin(){
 function chooseLayout(tpl){
   session.layout = tpl;
   session.photos = new Array(tpl.shots).fill(null);
+  session.times = new Array(tpl.shots).fill(null);
   session.marks.clear();
+  applySheetAspect();
   session.sheet = null;
   go('capture');
   runCaptureSequence();
@@ -792,6 +1255,7 @@ function abandon(){
   clearTimeout(session.idleTimer);
   clearTimeout(session.thankYouTimer);
   session.photos = [];
+  session.times = [];
   session.marks.clear();
   session.sheet = null;
   session.copies = settings.defaultCopies;
@@ -857,7 +1321,10 @@ async function runCaptureSequence(targets){
 
     fireFlash();
     const frame = grabFrame();
-    if (frame) session.photos[slots[i]] = frame;
+    if (frame) {
+      session.photos[slots[i]] = frame;
+      session.times[slots[i]] = Date.now();
+    }
     buildShotStrip();
 
     if (i < slots.length - 1) await sleep(settings.betweenShotsSeconds * 1000);
@@ -934,7 +1401,7 @@ function buildShotStrip(){
 
 function compose(){
   session.sheet = renderSheet(session.photos, session.layout,
-                              currentMedia(), branding(), 1,
+                              currentMedia(), branding(session.layout), 1,
                               {mono: settings.photoTone !== 'colour'});
 }
 
@@ -954,7 +1421,7 @@ function buildLayoutTiles(){
 
     const pv = document.createElement('div');
     pv.className = 'pv';
-    pv.appendChild(renderSheet([], tpl, currentMedia(), branding(), 0.24,
+    pv.appendChild(renderSheet([], tpl, currentMedia(), branding(tpl), 0.24,
                                {numberEmptySlots: true,
                                 mono: settings.photoTone !== 'colour'}));
 
@@ -1052,7 +1519,10 @@ function showConfirm(){
   host.appendChild(session.sheet);
 
   const media = currentMedia();
-  const px = mediaPixels(media);
+  const px = sheetPixels(session.layout, media);
+  // A roll is not a sheet, and saying so beside "80MM ROLL" is the whole
+  // point of the spec block.
+  setPixel(el('#confirm-well-title'), media.flow ? 'ROLL' : 'SHEET', 4);
   // A phone stage has room for the essentials only. Sheet size and printer
   // are operator detail; layout, paper and copies are what a guest is being
   // asked to confirm.
@@ -1062,7 +1532,8 @@ function showConfirm(){
        ['COPIES', session.copies === 1 ? '1 PRINT' : session.copies + ' PRINTS']]
     : [['LAYOUT',  session.layout.name + ' / ' + session.layout.subtitle],
        ['PAPER',   media.shortName],
-       ['SHEET',   px.w + 'x' + px.h + ' / ' + media.dpi + ' DPI'],
+       [media.flow ? 'ROLL' : 'SHEET',
+        px.w + 'x' + px.h + ' / ' + media.dpi + ' DPI'],
        ['COPIES',  session.copies === 1 ? '1 PRINT' : session.copies + ' PRINTS'],
        ['PRINTER', 'MACOS DIALOG']];
   const spec = el('#confirm-spec');
@@ -1124,7 +1595,10 @@ function submitPrint(){
   setBars('#print-bars', 0.15);
 
   const media = currentMedia();
-  const dataURL = session.sheet.toDataURL('image/jpeg', 0.95);
+  // A receipt is line art and a QR code: JPEG ringing around a finder pattern
+  // is exactly what stops a phone reading it. Photographs keep the JPEG.
+  const dataURL = media.flow ? session.sheet.toDataURL('image/png')
+                             : session.sheet.toDataURL('image/jpeg', 0.95);
 
   setTimeout(() => {
     el('#print-status').textContent = silentPrintingLikely()
@@ -1156,12 +1630,19 @@ function openPrintDialog(dataURL, media, copies, done){
                            () => '<img src="' + dataURL + '">').join('');
   const doc = printFrame.contentDocument;
   doc.open();
+  // A roll has no page height — `auto` lets the driver feed exactly as far as
+  // the receipt is long, and the 4mm either side centres 72mm of ink on 80mm
+  // of paper.
+  const page = media.flow
+    ? '@page{size:80mm auto;margin:0}' +
+      'img{display:block;width:72mm;height:auto;margin:0 4mm;' +
+      'page-break-after:always;break-after:page}'
+    : '@page{size:' + media.w + 'in ' + media.h + 'in;margin:0}' +
+      'img{display:block;width:' + media.w + 'in;height:' + media.h + 'in;' +
+      'object-fit:cover;page-break-after:always;break-after:page}';
   doc.write(
     '<!doctype html><meta charset="utf-8"><title>Photobooth print</title><style>' +
-    '@page{size:' + media.w + 'in ' + media.h + 'in;margin:0}' +
-    'html,body{margin:0;padding:0;background:#fff}' +
-    'img{display:block;width:' + media.w + 'in;height:' + media.h + 'in;' +
-    'object-fit:cover;page-break-after:always;break-after:page}' +
+    'html,body{margin:0;padding:0;background:#fff}' + page +
     'img:last-child{page-break-after:auto;break-after:auto}' +
     '</style>' + pages);
   doc.close();
@@ -1283,7 +1764,17 @@ async function renderAdmin(){
     row('PRINT DATE', seg('printDate', [[true, 'ON'], [false, 'OFF']], settings.printDate)),
     row('PHOTO TONE', seg('photoTone', [['mono', 'MONO'], ['colour', 'COLOUR']], settings.photoTone)),
     row('SHEET NO.', num('sheetCounter', 1, 999, 1, '')),
-    note('info', 'DISPLAY WORD is the oversized word on the sheet — a long one runs off the edge on purpose. Leave it empty to use the event name. SHEET NO. prints as "003." and counts up with every print.'),
+    note('info', 'DISPLAY WORD is the oversized word on the sheet — a long one runs off the edge on purpose, and on a receipt it is the script line under the event name. Leave it empty to use the event name. SHEET NO. prints as "003." and counts up with every print.'),
+  ]));
+
+  parts.push(section('RECEIPT', 'printer', [
+    row('SHOT NAMES', field('printTracks', 'comma separated, e.g. ARRIVAL, THE TOAST')),
+    row('PARAGRAPH', field('printPara', 'the small print above the QR')),
+    row('FOOTER', field('printFooter', 'e.g. THE ART OF THE MOMENT')),
+    row('QR LINK', field('printLink', 'https://… — empty prints no code')),
+    note(currentMedia().flow ? 'info' : 'warn', currentMedia().flow
+      ? 'Receipt mode is on. Guests choose between the 1, 2 and 4 shot rolls; the shot order is timed from the first shutter, so those minutes are real. Leave SHOT NAMES empty for FRAME 01, FRAME 02.'
+      : 'These only appear on 80mm thermal. Set PAPER above to "80mm Thermal Roll" to put the booth into receipt mode.'),
   ]));
 
   parts.push(section('KIOSK', 'hourglass', [
@@ -1378,9 +1869,10 @@ function afterSettingChange(key){
   if (key === 'maxCopies') session.copies = Math.min(session.copies, settings.maxCopies);
   // Anything that changes how a sheet looks re-renders the tiles, so the
   // operator sees the paper change as they type.
-  if (key === 'mediaID') applySheetAspect();
+  if (key === 'mediaID') { applySheetAspect(); renderAdmin(); }
   if (['mediaID', 'photoTone', 'eventName', 'printWord', 'printCaption',
-       'printDate', 'sheetCounter'].includes(key)) buildLayoutTiles();
+       'printDate', 'sheetCounter', 'printTracks', 'printPara',
+       'printFooter', 'printLink'].includes(key)) buildLayoutTiles();
 }
 
 async function listCameras(){
@@ -1401,8 +1893,13 @@ function applyMirror(){
 /// Publishes the chosen paper's shape as a CSS variable, so every well that
 /// shows a sheet takes the sheet's aspect rather than letterboxing it.
 function applySheetAspect(){
-  const px = mediaPixels(currentMedia());
-  document.querySelector('.app').style.setProperty('--sheet-aspect', px.w + ' / ' + px.h);
+  const media = currentMedia();
+  const px = sheetPixels(activeLayout(), media);
+  const app = document.querySelector('.app');
+  app.style.setProperty('--sheet-aspect', px.w + ' / ' + px.h);
+  // A receipt is three times as tall as it is wide. The tile grid has to
+  // give it room or every layout collapses into an identical sliver.
+  app.classList.toggle('rollmedia', !!media.flow);
 }
 
 /* ==================================================================== *
