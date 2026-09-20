@@ -116,6 +116,13 @@ private struct ThumbnailRow: View {
     let marks: Set<Int>
     let onTap: (Int) -> Void
 
+    @Environment(\.panelSize) private var size
+
+    /// A thumbnail is capped rather than left to take its whole share of the
+    /// row. With a single shot on a wide stage an uncapped square grew to the
+    /// full width of the module and pushed LOOKS GOOD off the screen.
+    private var cap: CGFloat { size.pick(260, 180) }
+
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(photos.enumerated()), id: \.offset) { index, photo in
@@ -135,10 +142,13 @@ private struct ThumbnailRow: View {
                                 CrossMark()
                             }
                         }
-                        .frame(maxWidth: .infinity)
                         .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: cap)
                         .clipped()
                         .heavyFramed(marked ? Panel.rule : Panel.ruleThin)
+                        // Capped first, then centred in whatever share of the
+                        // row this frame was given.
+                        .frame(maxWidth: .infinity)
 
                         PixelText(text: "\(index + 1)", cell: 3)
                     }

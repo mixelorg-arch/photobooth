@@ -49,7 +49,8 @@ struct BoothRootView: View {
     private var screen: some View {
         switch session.step {
         case .attract:
-            AttractView(onStart: { session.begin() },
+            AttractView(layoutCount: store.settings.guestLayouts.count,
+                        onStart: { session.begin() },
                         onAdmin: { session.go(.admin) })
 
         case .layout:

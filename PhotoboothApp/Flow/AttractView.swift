@@ -7,6 +7,10 @@ import SwiftUI
 /// find a target. The hidden operator door is in the top-left corner, away
 /// from where anyone taps to start.
 struct AttractView: View {
+    /// How many layouts the guest will actually be offered. Hard-coding six
+    /// became a lie the moment the paper decided the list — a roll shows
+    /// three — and it was already one whenever the operator trimmed it.
+    var layoutCount: Int = 6
     let onStart: () -> Void
     let onAdmin: () -> Void
 
@@ -16,7 +20,8 @@ struct AttractView: View {
         PanelScreen(status: "READY", footer: "PHOTOBOOTH") {
             ZStack {
                 VStack {
-                    PanelModule(title: "SAY CHEESE", value: "6 LAYOUTS") {
+                    PanelModule(title: "SAY CHEESE",
+                                value: layoutCount == 1 ? "1 LAYOUT" : "\(layoutCount) LAYOUTS") {
                         VStack(alignment: .leading, spacing: size.pick(24, 16)) {
                             HStack(spacing: size.pick(20, 14)) {
                                 PixelIconView(icon: .eyeball, size: size.pick(104, 64),

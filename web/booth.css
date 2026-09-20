@@ -254,9 +254,15 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 /* One row, equal columns, however many shots the layout takes. Wrapping was
    the obvious choice and the wrong one: a sixth thumbnail alone on a second
    line flex-grows to the full width and wrecks the module. */
-.thumbrow{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;
+/* One row of square thumbnails, however many there are. The cell is capped
+   and centred rather than left to take a whole 1fr column: with a single
+   shot on a wide stage an uncapped square grew to the full panel width and
+   pushed LOOKS GOOD off the edge of the screen. */
+.thumbrow{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);
+          justify-items:center;
           border:var(--rule-thin) solid var(--ink)}
-.thumbrow .t{min-width:0;padding:8px;position:relative;cursor:pointer;
+.thumbrow .t{min-width:0;width:100%;max-width:min(100%, 34vh);
+             padding:8px;position:relative;cursor:pointer;
              border:0;border-right:var(--rule-thin) dashed var(--ink);background:var(--paper);
              display:flex;flex-direction:column;align-items:center;gap:6px}
 .thumbrow .t:last-child{border-right:0}
@@ -310,6 +316,10 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
         font-family:var(--mono);font-size:15px;color:var(--ink);flex:1;min-width:200px;
         -webkit-user-select:text;user-select:text}
 .afield:focus{outline:var(--rule-thin) solid var(--lavender);outline-offset:2px}
+/* `flex:1` is right inside a row, and wrong as a direct child of a section:
+   there the main axis is vertical and the field stretches to fill the
+   column. Keep the 50px. */
+.sec>.afield{flex:0 0 auto}
 .num{display:flex;align-items:center;border:var(--rule-thin) solid var(--ink)}
 .num button{width:56px;height:50px;border:0;background:var(--paper);cursor:pointer;
             font-family:var(--mono);font-size:22px;color:var(--ink)}
@@ -434,7 +444,7 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   .btn.huge{min-height:80px}
   .btn.sqr{width:84px;height:84px}
   .bigbox{width:132px;height:84px;padding-bottom:8px}
-  .thumbrow .t{padding:6px}
+  .thumbrow .t{padding:6px;max-width:min(100%, 26vh)}
 }
 
 /* ---------- 80mm receipt ---------- *
