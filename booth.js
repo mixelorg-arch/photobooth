@@ -942,6 +942,17 @@ function dateStamp(d){
 }
 
 /* ==================================================================== *
+ * The Android shell, when there is one.
+ *
+ * `BoothNative` is injected by the tablet app and is simply absent in a
+ * browser, so every use of it is guarded and this file stays the one build
+ * that runs everywhere. The shell exists because a WebView cannot print and
+ * a browser cannot reach a Bluetooth printer — nothing else about the booth
+ * changes.
+ * ==================================================================== */
+const NATIVE = (typeof window !== 'undefined' && window.BoothNative) || null;
+
+/* ==================================================================== *
  * Settings — the same shape as AppSettings.swift, in localStorage.
  * Saved values are merged over the defaults rather than replacing them,
  * so adding a field never wipes what the operator had set.
@@ -977,6 +988,12 @@ const DEFAULTS = {
   printFooter: 'THE ART OF THE MOMENT',
   /// What the QR points at. Empty prints no code at all.
   printLink: '',
+  /* --- the tablet's printer --- */
+  /// DIALOG raises the system print sheet; THERMAL goes straight out over
+  /// Bluetooth with no window at all. Android only.
+  printMode: 'dialog',
+  /// Imaging width of the thermal head. 576 = 80mm, 384 = 58mm.
+  thermalWidthDots: 576,
   idleReturnSeconds: 90,
   thankYouSeconds: 6,
   adminPasscode: '1234',
@@ -1512,6 +1529,14 @@ function updateCopies(){
   el('[data-act="copies-up"]').disabled = session.copies >= settings.maxCopies;
 }
 
+/* Where the paper is actually coming from. The confirm screen is the last
+ * thing an operator checks before an event, so it must not claim a route the
+ * booth is not taking. */
+function printerLabel(){
+  if (!NATIVE) return 'MACOS DIALOG';
+  return settings.printMode === 'thermal' ? 'BLUETOOTH THERMAL' : 'ANDROID DIALOG';
+}
+
 function showConfirm(){
   compose();
   const host = el('#confirm-sheet');
@@ -1535,7 +1560,7 @@ function showConfirm(){
        [media.flow ? 'ROLL' : 'SHEET',
         px.w + 'x' + px.h + ' / ' + media.dpi + ' DPI'],
        ['COPIES',  session.copies === 1 ? '1 PRINT' : session.copies + ' PRINTS'],
-       ['PRINTER', 'MACOS DIALOG']];
+       ['PRINTER', printerLabel()]];
   const spec = el('#confirm-spec');
   spec.innerHTML = '';
   rows.forEach(([key, value]) => {
@@ -1582,6 +1607,9 @@ function showConfirm(){
  * no browser chrome. It can be wrong, so it only ever changes wording — never
  * behaviour. */
 function silentPrintingLikely(){
+  // On the tablet this is not a guess: the Bluetooth path has no dialog by
+  // construction, and the system print sheet always has one.
+  if (NATIVE) return settings.printMode === 'thermal';
   const chrome = /Chrome\//.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent);
   const chromeless = window.outerHeight - window.innerHeight < 10;
   return chrome && chromeless;
@@ -1606,6 +1634,7 @@ function submitPrint(){
       : 'Opening the print dialog…';
     setBars('#print-bars', 0.6);
     try {
+      if (NATIVE) { nativePrint(dataURL, media); return; }
       openPrintDialog(dataURL, media, session.copies, () => {
         setBars('#print-bars', 1);
         finishPrinting();
@@ -1614,6 +1643,42 @@ function submitPrint(){
       fail(err && err.message ? err.message : String(err));
     }
   }, 350);
+}
+
+/* The tablet's two routes out.
+ *
+ * Bluetooth is the silent one and the reason the Android build exists: the
+ * sheet is dithered and sent as ESC/POS raster with no window, which is what
+ * a kiosk needs and what no browser can do. The system dialog is the fallback
+ * for an AirPrint/Mopria printer such as the SELPHY.
+ *
+ * Only the Bluetooth path reports back — `nativePrintResult` below. The
+ * system dialog is the guest handing over to Android, and there is no useful
+ * answer to wait for. */
+function nativePrint(dataURL, media){
+  const px = session.sheet;
+  if (settings.printMode === 'thermal') {
+    NATIVE.thermalPrint(dataURL, session.copies,
+                        Math.max(64, settings.thermalWidthDots | 0));
+    return;                                  // finishes in nativePrintResult
+  }
+  // Media sizes are in mils — thousandths of an inch. A roll has no page
+  // height, so its length is whatever the receipt came out.
+  const widthMils  = Math.round((media.flow ? 80 / 25.4 : media.w) * 1000);
+  const heightMils = Math.round(media.flow
+    ? (px.height / media.dpi) * 1000
+    : media.h * 1000);
+  NATIVE.printSheet(dataURL, session.copies, widthMils, heightMils,
+                    'Photobooth ' + media.shortName);
+  setBars('#print-bars', 1);
+  finishPrinting();
+}
+
+/// Called by the Android shell when a Bluetooth job has finished or failed.
+function nativePrintResult(ok, message){
+  if (!ok) { fail(message || 'The printer did not answer.'); return; }
+  setBars('#print-bars', 1);
+  finishPrinting();
 }
 
 let printFrame = null;
@@ -1685,10 +1750,15 @@ function fail(message){
 
 function savePNG(){
   if (!session.sheet) return;
+  const name = 'photobooth-' + session.layout.id + '-' + Date.now() + '.png';
+  // A WebView takes a blob download nowhere at all — the tap would look like
+  // it worked and nothing would ever appear. The shell writes it to the
+  // tablet's Pictures instead.
+  if (NATIVE) { NATIVE.savePNG(session.sheet.toDataURL('image/png'), name); return; }
   session.sheet.toBlob(blob => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'photobooth-' + session.layout.id + '-' + Date.now() + '.png';
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }, 'image/png');
@@ -1713,7 +1783,9 @@ function renderPasscode(){
     '<div class="note"><span class="swatch info-c"></span>' +
     '<span>Operator console. Enter the passcode.</span></div>' +
     '<input class="afield" id="pass" type="password" inputmode="numeric" autocomplete="off" ' +
-    'placeholder="passcode" style="max-width:320px;flex:0 0 320px">' +
+    // A flex-basis here would be read as a *height*: this field's parent is
+    // a column, not a row, and the box grew to 320px tall on a tablet.
+    'placeholder="passcode" style="width:320px;max-width:100%">' +
     '<div class="row gap14"><button class="btn solid" id="pass-ok" style="width:200px">' +
     '<span class="px" data-cell="4">OK</span></button>' +
     '<button class="btn tint-salmon" data-act="abandon" style="width:200px">' +
@@ -1746,16 +1818,28 @@ async function renderAdmin(){
   ]));
 
   const silent = silentPrintingLikely();
-  parts.push(section('PRINT', 'printer', [
+  const printRows = [
     row('PAPER', seg('mediaID', Object.values(MEDIA).map(m => [m.id, m.name]), settings.mediaID)),
     row('MAX COPIES', num('maxCopies', 1, 20, 1, '')),
-    row('PRINT MODE',
+  ];
+  if (NATIVE) {
+    // On the tablet the mode is a real choice, not an inference.
+    printRows.push(row('PRINT MODE', seg('printMode',
+      [['dialog', 'SYSTEM DIALOG'], ['thermal', 'BLUETOOTH']], settings.printMode)));
+    printRows.push(note(silent ? 'info' : 'warn', silent
+      ? 'Silent. Pressing PRINT dithers the sheet and sends it straight out over Bluetooth — no window, nothing for a guest to tap. Pick the printer below.'
+      : 'The Android print sheet will appear. It finds an AirPrint printer such as the SELPHY over Mopria. For a booth with nobody minding it, switch to BLUETOOTH.'));
+  } else {
+    printRows.push(row('PRINT MODE',
         '<div class="seg"><button class="' + (silent ? 'on' : '') + '">SILENT</button>' +
-        '<button class="' + (silent ? '' : 'on') + '">DIALOG</button></div>'),
-    note(silent ? 'info' : 'warn', silent
+        '<button class="' + (silent ? '' : 'on') + '">DIALOG</button></div>'));
+    printRows.push(note(silent ? 'info' : 'warn', silent
       ? 'Silent: pressing PRINT sends the sheet straight to the default printer, no window. Make the SELPHY the default printer and set its paper to borderless 4x6 — Chrome uses those defaults and asks nothing.'
-      : 'A print dialog will appear. To print silently, quit Chrome and run ./kiosk-chrome.sh — it relaunches Chrome with --kiosk-printing, which is the only way a browser can print without a window. Safari cannot do it at all.'),
-  ]));
+      : 'A print dialog will appear. To print silently, quit Chrome and run ./kiosk-chrome.sh — it relaunches Chrome with --kiosk-printing, which is the only way a browser can print without a window. Safari cannot do it at all.'));
+  }
+  parts.push(section('PRINT', 'printer', printRows));
+
+  if (NATIVE) parts.push(thermalSection());
 
   parts.push(section('PRINT DESIGN', 'star', [
     row('EVENT', field('eventName', 'e.g. Ana & Miguel')),
@@ -1791,6 +1875,36 @@ async function renderAdmin(){
   body.innerHTML = parts.join('');
   paintIcons(body); paintPixelText(body);
   wireAdmin(body);
+}
+
+/* The tablet's Bluetooth printer. Devices come from the OS's paired list —
+ * pairing itself happens in Android Settings, because a booth should not be
+ * scanning for radios in front of a guest. */
+function thermalSection(){
+  let devices = [];
+  try {
+    devices = (NATIVE.thermalDevices() || '').split('\n')
+      .filter(Boolean)
+      .map(line => line.split('\t'))
+      .map(([mac, name]) => [mac, (name || mac).toUpperCase()]);
+  } catch {}
+
+  let current = '';
+  try { current = (NATIVE.selectedThermalDevice() || '').split('\t')[0]; } catch {}
+
+  const rows = [];
+  if (devices.length) {
+    rows.push(row('PRINTER', seg('thermalDevice', devices, current)));
+  } else {
+    rows.push(row('PRINTER',
+      '<div class="seg"><button class="on">NONE PAIRED</button></div>'));
+  }
+  rows.push(row('HEAD WIDTH', seg('thermalWidthDots',
+    [[576, '80MM / 576'], [384, '58MM / 384']], settings.thermalWidthDots)));
+  rows.push(note(devices.length ? 'info' : 'warn', devices.length
+    ? 'Paired Bluetooth devices. Pick the receipt printer, set HEAD WIDTH to match it, and set PAPER above to the 80mm roll. The sheet is dithered to 1 bit here, so what you see on the confirm screen is what burns.'
+    : 'No paired Bluetooth devices. Pair the printer in Android Settings › Connected devices first, then come back — the booth never scans for radios in front of a guest.'));
+  return section('BLUETOOTH PRINTER', 'printer', rows);
 }
 
 const section = (title, icon, rows) =>
@@ -1833,8 +1947,14 @@ function wireAdmin(root){
       let value = btn.dataset.value;
       if (value === 'true') value = true;
       else if (value === 'false') value = false;
-      settings[key] = value;
-      saveSettings();
+      else if (key === 'thermalWidthDots') value = parseInt(value, 10) || 576;
+      if (key === 'thermalDevice') {
+        // Which printer is paired is the OS's business, not the booth's.
+        try { NATIVE.selectThermalDevice(String(value)); } catch {}
+      } else {
+        settings[key] = value;
+        saveSettings();
+      }
       root.querySelectorAll('[data-set="' + key + '"]').forEach(b =>
         b.classList.toggle('on', b === btn));
       afterSettingChange(key);
@@ -1869,7 +1989,9 @@ function afterSettingChange(key){
   if (key === 'maxCopies') session.copies = Math.min(session.copies, settings.maxCopies);
   // Anything that changes how a sheet looks re-renders the tiles, so the
   // operator sees the paper change as they type.
-  if (key === 'mediaID') { applySheetAspect(); renderAdmin(); }
+  if (key === 'mediaID' || key === 'printMode') {
+    applySheetAspect(); updateAttractCount(); renderAdmin();
+  }
   if (['mediaID', 'photoTone', 'eventName', 'printWord', 'printCaption',
        'printDate', 'sheetCounter', 'printTracks', 'printPara',
        'printFooter', 'printLink'].includes(key)) buildLayoutTiles();
@@ -1892,6 +2014,13 @@ function applyMirror(){
 
 /// Publishes the chosen paper's shape as a CSS variable, so every well that
 /// shows a sheet takes the sheet's aspect rather than letterboxing it.
+/// The attract screen's layout count. Hard-coded it was a lie the moment the
+/// paper decided how many layouts a guest is offered — a roll shows three.
+function updateAttractCount(){
+  const n = guestLayouts().length;
+  setPixel(el('#attract-layouts'), n === 1 ? '1 LAYOUT' : n + ' LAYOUTS', 3);
+}
+
 function applySheetAspect(){
   const media = currentMedia();
   const px = sheetPixels(activeLayout(), media);
@@ -1978,6 +2107,10 @@ function isStandalone(){
 /// with no network at all.
 function registerServiceWorker(){
   if (!('serviceWorker' in navigator)) return;
+  // Inside the tablet app every asset already lives in the APK and is served
+  // by the shell. A cache-first worker on top of that could only ever serve
+  // a stale build.
+  if (NATIVE) return;
   // file:// has no service worker and does not need one.
   if (location.protocol === 'file:') return;
 
@@ -2026,11 +2159,21 @@ document.addEventListener('visibilitychange', () => {
 /* ==================================================================== *
  * Boot
  * ==================================================================== */
+// Inside the tablet shell there is no DevTools to attach, so the stage the
+// booth actually got goes to logcat once at boot. It is the first thing to
+// check when a venue says "it looks like a phone".
+if (NATIVE) {
+  console.log('booth stage ' + window.innerWidth + 'x' + window.innerHeight +
+              ' dpr=' + window.devicePixelRatio +
+              ' compact=' + (window.innerWidth < 700));
+}
+
 registerServiceWorker();
 paintIcons();
 paintPixelText();
 showInstallHintIfNeeded();
 applySheetAspect();
+updateAttractCount();
 applyMirror();
 updateCopies();
 buildLayoutTiles();
@@ -2040,4 +2183,8 @@ go('attract');
 
 // Exposed for poking at the renderer from the console during testing.
 window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
-                pixelTextCanvas, setPixel, compactStage, isStandalone};
+                pixelTextCanvas, setPixel, compactStage, isStandalone,
+                // The Android shell calls these two: the back key abandons a
+                // session rather than leaving the app, and a Bluetooth job
+                // reports its outcome when it lands.
+                abandon, nativePrintResult};
