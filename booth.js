@@ -1922,6 +1922,13 @@ async function renderAdmin(){
     row('IN USE', '<div class="seg"><button class="on">' +
         escapeHTML((inUse && inUse.label) || (stream ? 'BUILT-IN' : 'NOT OPEN')) +
         '</button></div>'),
+    // The bus itself, unfiltered. When a camera will not show up this is the
+    // one line worth reading out to someone.
+    row('USB PORT', '<div class="seg"><button class="on">' +
+        escapeHTML(NATIVE
+          ? (usbDevices().map(d => d.name + ' / ' + d.kind).join('  ·  ') || 'EMPTY')
+          : 'N/A IN BROWSER') +
+        '</button></div>'),
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
     row('COUNTDOWN', num('countdownSeconds', 1, 10, 1, 's')),
     row('SHOT GAP', num('betweenShotsSeconds', 0.5, 6, 0.5, 's')),
@@ -2027,24 +2034,51 @@ function thermalSection(){
   return section('BLUETOOTH PRINTER', 'printer', rows);
 }
 
-/* What to tell the operator when AUTO found no external camera. On the
- * tablet the shell can see the USB bus, so it can tell "nothing is plugged
- * in" apart from "something is plugged in but Android is not handing it to
- * apps" — which look identical from the web page and need opposite fixes. */
+/* What is actually on the USB port, as the operator console reads it. */
+function usbDevices(){
+  let raw = '';
+  try { raw = NATIVE ? (NATIVE.usbCameras() || '') : ''; } catch {}
+  return raw.split('\n').filter(Boolean).map(line => {
+    const [name, kind] = line.split('\t');
+    return {name: name || 'USB DEVICE', kind: kind || 'OTHER'};
+  });
+}
+
+/* What to tell the operator when AUTO found no external camera.
+ *
+ * Three different things look identical from the web page — nothing plugged
+ * in, plugged in as a *drive*, or plugged in as a camera the tablet will not
+ * share — and they need completely different fixes. The shell can see the
+ * USB bus, so say which one it is instead of a shrug. */
 function usbCameraNote(){
-  let attached = '';
-  try { attached = NATIVE ? (NATIVE.usbCameras() || '') : ''; } catch {}
-  const names = attached.split('\n').filter(Boolean);
-  if (names.length) {
-    return 'A USB camera is plugged in (' + names.join(', ') + ') but Android is ' +
-           'not offering it to apps, so the booth cannot preview from it. On a ' +
-           'Kodak Charmera, take the memory card out — with a card in it comes ' +
-           'up as a drive, not a camera. Otherwise this tablet\'s Android does ' +
-           'not support external cameras and the built-in lens is the only option.';
+  if (!NATIVE) {
+    return 'No USB camera detected — AUTO is using the built-in lens. Plug a ' +
+           'camera in and it is picked up on the next session.';
   }
-  return 'No USB camera detected — AUTO is using the built-in lens. Plug a ' +
-         'camera into USB-C and it is picked up on the next session. A Kodak ' +
-         'Charmera must have no memory card in it to come up as a camera.';
+  const devices = usbDevices();
+  if (!devices.length) {
+    return 'Nothing is plugged into the USB port. Check the cable actually ' +
+           'carries data and goes the right way round — a Kodak Charmera ships ' +
+           'with a USB-C-to-USB-A cable, which needs a USB-A-to-USB-C adapter ' +
+           'before it will reach a tablet. Then check the camera is switched on.';
+  }
+  const storage = devices.find(d => d.kind === 'STORAGE');
+  if (storage) {
+    return storage.name + ' is plugged in, but as a DRIVE rather than a camera, ' +
+           'so there is no picture to preview. Take the memory card out of it — ' +
+           'a Kodak Charmera only becomes a camera with no card inside — then ' +
+           'unplug and plug it back in.';
+  }
+  const video = devices.find(d => d.kind === 'VIDEO');
+  if (video) {
+    return video.name + ' is plugged in as a camera, but this tablet\'s Android ' +
+           'is not offering it to apps, so no app on it can preview from the ' +
+           'camera. That is the tablet, not the booth. The built-in lens is the ' +
+           'only option on this device.';
+  }
+  return devices.map(d => d.name).join(', ') + ' is plugged in, but not as a ' +
+         'camera or a drive. If this is the Charmera, take its memory card out ' +
+         'and reconnect it.';
 }
 
 const section = (title, icon, rows) =>
