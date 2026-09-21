@@ -275,7 +275,10 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .thumbrow{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);
           justify-items:center;
           border:var(--rule-thin) solid var(--ink)}
-.thumbrow .t{min-width:0;width:100%;max-width:min(100%, 34vh);
+/* The cap is absolute as well as relative: tied to viewport height alone it
+   ballooned on a tall portrait stage and pushed the buttons into the
+   thumbnail. The vh term only ever shrinks it further on a short screen. */
+.thumbrow .t{min-width:0;width:100%;max-width:min(100%, 34vh, 260px);
              padding:8px;position:relative;cursor:pointer;
              border:0;border-right:var(--rule-thin) dashed var(--ink);background:var(--paper);
              display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -458,7 +461,7 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   .btn.huge{min-height:80px}
   .btn.sqr{width:84px;height:84px}
   .bigbox{width:132px;height:84px;padding-bottom:8px}
-  .thumbrow .t{padding:6px;max-width:min(100%, 26vh)}
+  .thumbrow .t{padding:6px;max-width:min(100%, 26vh, 200px)}
 }
 
 /* ---------- 80mm receipt ---------- *
@@ -483,4 +486,32 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 @media (max-width:700px) and (max-height:740px){
   .app.rollmedia .tilegrid{grid-auto-rows:260px}
   .app.rollmedia .sheetcol{height:31vh}
+}
+
+
+/* ==================================================================== *
+ * A tablet stood upright.
+ *
+ * Wide enough to clear the phone breakpoint, so the type and the chrome stay
+ * at tablet size — but two panes side by side in a tall narrow window wastes
+ * both of them. The sheet goes on top and the controls underneath, the way
+ * they do on a phone, at a size worth looking at.
+ * ==================================================================== */
+@media (orientation: portrait) and (min-width: 701px){
+  .pad.row{flex-direction:column}
+  .sheetcol{flex:0 0 auto;height:46vh;min-height:0;align-self:stretch;width:auto}
+  /* With the print options hidden there is nothing under the sheet but two
+     buttons, so it can have most of the stage. */
+  .screen.quick .sheetcol{flex:0 0 auto;height:62vh}
+  /* Six sheet layouts read as 2 x 3 in a tall window; three receipts are
+     narrow enough to stay in one row. */
+  .tilegrid{grid-template-columns:repeat(2,1fr)}
+  /* A roll preview is sized from its *width* here, not the row: a tall
+     portrait row left a 1:2.7 receipt floating in a column of white with a
+     third of its height wasted above and below. Width-driven, it fills the
+     column and the row takes whatever height that needs. */
+  .app.rollmedia .tilegrid{grid-template-columns:repeat(3,1fr);
+                           grid-auto-rows:min-content;align-content:center}
+  .app.rollmedia .tile .pv{flex:none;width:100%;height:auto;max-width:100%;
+                           margin:8px auto}
 }
