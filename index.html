@@ -86,6 +86,11 @@
         <div class="mod-in tight">
           <div class="screenwell" id="viewport">
             <video id="video" playsinline muted autoplay></video>
+            <!-- The live picture when the booth is driving a USB camera
+                 itself, which it does on tablets that will not share one.
+                 An <img> on an MJPEG stream, so the browser decodes the
+                 frames rather than shuttling them through JavaScript. -->
+            <img id="uvc" alt="" hidden>
             <div class="grid-overlay"></div>
             <div class="guide" id="guide"></div>
             <!-- The countdown lives *on* the preview, not over it: a guest

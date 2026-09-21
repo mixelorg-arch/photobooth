@@ -1102,8 +1102,58 @@ function sheetPixels(tpl, media){
  * Camera
  * ==================================================================== */
 const video = document.getElementById('video');
+const uvcImage = document.getElementById('uvc');
 const camMsg = document.getElementById('cam-msg');
 let stream = null;
+
+/* The camera the booth drives itself.
+ *
+ * Some tablets will not hand a plugged-in USB camera to any app — the
+ * external-camera support Android leaves optional. On those the shell talks
+ * to the camera over the USB bus directly and serves the frames back as an
+ * MJPEG stream from the app's own origin, so this is a picture in an <img>
+ * rather than a MediaStream in a <video>. Everything downstream — the
+ * countdown, the capture, the sheet — works the same either way, because
+ * `grabFrame` is the only thing that ever reads the pixels.
+ */
+const uvc = {running: false, width: 0, height: 0};
+
+function readUvcStatus(){
+  if (!NATIVE || !NATIVE.uvcStatus) return {running: false, width: 0, height: 0, message: ''};
+  let raw = '';
+  try { raw = NATIVE.uvcStatus() || ''; } catch { return {running:false, width:0, height:0, message:''}; }
+  const [state, size, message] = raw.split('\t');
+  const [w, h] = (size || '0x0').split('x').map(Number);
+  return {running: state === 'RUNNING', width: w || 0, height: h || 0, message: message || ''};
+}
+
+/// Points the <img> at the live stream, or takes it down again.
+function showUvc(on){
+  uvc.running = on;
+  if (on) {
+    // A fresh query string each time, or the browser reuses the finished
+    // stream from the last session and the picture never starts.
+    let path = '/__camera/stream.mjpg';
+    try { if (NATIVE.uvcStreamPath) path = NATIVE.uvcStreamPath(); } catch {}
+    uvcImage.src = path + '?t=' + Date.now();
+    uvcImage.hidden = false;
+    video.hidden = true;
+    camMsg.hidden = true;
+  } else {
+    uvcImage.removeAttribute('src');
+    uvcImage.hidden = true;
+    video.hidden = false;
+  }
+  applyMirror();
+}
+
+/// Called by the shell when the operator starts or stops the camera.
+function uvcChanged(){
+  const state = readUvcStatus();
+  uvc.width = state.width; uvc.height = state.height;
+  showUvc(state.running);
+  if (session.step === 'admin') renderAdmin();
+}
 
 /* A plugged-in camera wins.
  *
@@ -1180,6 +1230,17 @@ async function upgradeToExternalCamera(){
 }
 
 async function startCamera(){
+  // A camera the booth drives itself is already open and needs nothing from
+  // getUserMedia, which cannot see it in the first place.
+  if (NATIVE) {
+    const state = readUvcStatus();
+    if (state.running) {
+      uvc.width = state.width; uvc.height = state.height;
+      showUvc(true);
+      return true;
+    }
+    if (uvc.running) showUvc(false);
+  }
   if (stream) return true;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showCamError('This browser will not give a page the camera.\n\n' +
@@ -1252,11 +1313,18 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
  * Never mirrored — a mirrored print reverses every logo in the room, even
  * though the preview is mirrored so people can pose. */
 function grabFrame(){
-  const w = video.videoWidth, h = video.videoHeight;
+  // One place reads the pixels, so nothing downstream has to know which
+  // kind of camera produced them.
+  const source = uvc.running ? uvcImage : video;
+  const w = uvc.running ? (uvcImage.naturalWidth || uvc.width)
+                        : video.videoWidth;
+  const h = uvc.running ? (uvcImage.naturalHeight || uvc.height)
+                        : video.videoHeight;
   if (!w || !h) return null;
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
-  c.getContext('2d').drawImage(video, 0, 0, w, h);
+  try { c.getContext('2d').drawImage(source, 0, 0, w, h); }
+  catch { return null; }
   return c;
 }
 
@@ -1971,6 +2039,7 @@ async function renderAdmin(){
   }
   parts.push(section('PRINT', 'printer', printRows));
 
+  if (NATIVE) parts.push(usbCameraSection());
   if (NATIVE) parts.push(thermalSection());
 
   parts.push(section('PRINT DESIGN', 'star', [
@@ -2007,6 +2076,47 @@ async function renderAdmin(){
   body.innerHTML = parts.join('');
   paintIcons(body); paintPixelText(body);
   wireAdmin(body);
+}
+
+/* Driving a USB camera the tablet refuses to share.
+ *
+ * This is the fallback for a tablet whose Android does not offer external
+ * cameras to apps at all. The booth talks to the camera over the USB bus
+ * itself. It is deliberately a button rather than automatic: opening a USB
+ * device raises a system permission dialog, which must never appear in
+ * front of a guest.
+ */
+function usbCameraSection(){
+  const state = readUvcStatus();
+  let report = '';
+  try { report = (NATIVE.uvcReport && NATIVE.uvcReport()) || ''; } catch {}
+
+  const rows = [];
+  rows.push(row('CAMERA SAYS', '<div class="seg"><button class="on">' +
+    escapeHTML(report || 'NOTHING PLUGGED IN') + '</button></div>'));
+  rows.push(row('DIRECT DRIVE',
+    '<div class="seg">' +
+    '<button data-act="uvc-start" class="' + (state.running ? 'on' : '') + '">START</button>' +
+    '<button data-act="uvc-stop" class="' + (state.running ? '' : 'on') + '">STOP</button>' +
+    '</div>'));
+  // Proves the picture path end to end without a camera: if the pattern
+  // shows and a test shot lands on the sheet, everything except the camera
+  // itself is working.
+  rows.push(row('TEST PATTERN',
+    '<div class="seg"><button data-act="uvc-test">RUN 1 MINUTE</button></div>'));
+  if (state.message) {
+    rows.push(row('RESULT', '<div class="seg"><button class="on">' +
+      escapeHTML(state.message) + '</button></div>'));
+  }
+
+  const isochronous = /ISOCHRONOUS/i.test(report);
+  rows.push(note(state.running ? 'info' : (isochronous ? 'warn' : 'info'),
+    state.running
+      ? 'The booth is driving the camera itself. It stays on between sessions; press STOP to hand it back.'
+      : isochronous
+        ? 'This camera streams over an isochronous endpoint. Android\'s USB API cannot read those from an app at all, so the booth cannot drive it this way — the limit is Android\'s, and no app on this tablet gets past it. A camera with a bulk endpoint, or a tablet that shares external cameras, would both work.'
+        : 'Use this only when ANDROID SEES above has no EXTERNAL entry — that is a tablet refusing to share the camera. START asks for USB permission once, then the booth reads the camera directly. CAMERA SAYS above is read straight off the camera\'s own descriptors.'));
+  return section('USB CAMERA', 'camera', rows);
 }
 
 /* The tablet's Bluetooth printer. Devices come from the OS's paired list —
@@ -2203,6 +2313,7 @@ async function listCameras(){
 
 function applyMirror(){
   video.classList.toggle('mirror', !!settings.mirrorPreview);
+  uvcImage.classList.toggle('mirror', !!settings.mirrorPreview);
 }
 
 /// Publishes the chosen paper's shape as a CSS variable, so every well that
@@ -2238,6 +2349,9 @@ const ACTIONS = {
   // from the confirm screen has to skip it in the other direction too.
   'confirm-back': () => settings.quickPrint ? showReview() : showCopies(),
   'to-confirm': showConfirm,
+  'uvc-start': () => { try { NATIVE.uvcStart(); } catch {} },
+  'uvc-stop':  () => { try { NATIVE.uvcStop(); } catch {} uvcChanged(); },
+  'uvc-test':  () => { try { NATIVE.uvcTestPattern(); } catch {} },
   'copies-up': () => { session.copies = Math.min(settings.maxCopies, session.copies + 1); updateCopies(); },
   'copies-down': () => { session.copies = Math.max(1, session.copies - 1); updateCopies(); },
   print: submitPrint,
@@ -2383,4 +2497,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
-                abandon, nativePrintResult};
+                abandon, nativePrintResult,
+                // The shell calls this when the operator starts or stops a
+                // directly-driven USB camera.
+                uvcChanged};
