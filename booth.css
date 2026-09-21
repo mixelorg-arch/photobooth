@@ -186,9 +186,18 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
    the panel sat opaque over the live preview forever and a guest saw a dark
    rectangle instead of their own face. */
 .cam-msg[hidden]{display:none}
+/* Same rule, for the two that the hidden print options toggle: a `.mod` and
+   a `.btn` both set `display`, so both would otherwise stay on screen — an
+   empty READY TO PRINT frame and a live SAVE PNG button. */
+.mod[hidden]{display:none}
+.btn[hidden]{display:none}
 
 /* the sheet, in its own well */
 .sheetcol{flex:0 0 min(40vw,430px)}
+/* With the print options hidden the right column holds two buttons and
+   nothing else, so the print itself takes the room rather than leaving a
+   field of white beside it. */
+.screen.quick .sheetcol{flex:0 0 min(62vw,780px)}
 /* The well takes the *sheet's* aspect, so the dark ground hugs the paper.
    Letterboxing a portrait 4x6 inside a landscape well threw away more than
    half the space on a phone, which is what made the proof look like a

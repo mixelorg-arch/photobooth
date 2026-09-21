@@ -958,7 +958,9 @@ const NATIVE = (typeof window !== 'undefined' && window.BoothNative) || null;
  * so adding a field never wipes what the operator had set.
  * ==================================================================== */
 const DEFAULTS = {
-  cameraId: '',            // '' = whichever camera the browser gives us
+  /// 'auto' prefers a plugged-in USB camera and falls back to the built-in
+  /// one; 'builtin' pins the tablet's own lens; anything else is a deviceId.
+  cameraId: 'auto',
   mirrorPreview: true,
   countdownSeconds: 3,
   betweenShotsSeconds: 1.5,
@@ -992,6 +994,10 @@ const DEFAULTS = {
   /// DIALOG raises the system print sheet; THERMAL goes straight out over
   /// Bluetooth with no window at all. Android only.
   printMode: 'dialog',
+  /// Hide the print options from the guest: no copy count, no spec table,
+  /// no SAVE PNG. Press PRINT and paper comes out. The operator's settings
+  /// decide the copies.
+  quickPrint: true,
   /// Imaging width of the thermal head. 576 = 80mm, 384 = 58mm.
   thermalWidthDots: 576,
   idleReturnSeconds: 90,
@@ -1099,6 +1105,80 @@ const video = document.getElementById('video');
 const camMsg = document.getElementById('cam-msg');
 let stream = null;
 
+/* A plugged-in camera wins.
+ *
+ * Someone who has connected a camera to the booth meant it, so an external
+ * lens beats the tablet's own every time. A USB camera reports itself with
+ * a name rather than a facing direction, which is the only signal the web
+ * platform gives — there is no "is this external" flag — so the label is
+ * what we match on.
+ *
+ * The Kodak Charmera is a UVC device: plugged into USB-C **with no microSD
+ * card in it** it comes up as a webcam and the tablet hands it over like any
+ * other camera. With a card in, it mounts as a drive instead and no app can
+ * take a preview from it. That is a setting on the camera, not something the
+ * booth can work around — take the card out and it just works.
+ */
+const EXTERNAL_CAMERA = /charmera|kodak|uvc|usb|external|webcam|capture|hdmi/i;
+/* Android names its own lenses "camera2 0, facing back" and iPadOS says
+ * "Front Camera". A built-in lens that happens to mention USB in its name —
+ * some tablets do — must not be mistaken for the one someone plugged in, so
+ * a stated facing direction disqualifies it. */
+const BUILT_IN_CAMERA = /facing (front|back)|front camera|back camera|built-?in/i;
+
+const isExternalCamera = label =>
+  EXTERNAL_CAMERA.test(label || '') && !BUILT_IN_CAMERA.test(label || '');
+
+/// The constraint to open with, given what is plugged in right now.
+async function resolveCamera(){
+  const want = settings.cameraId || 'auto';
+  const cams = await listCameras();
+
+  if (want !== 'auto' && want !== 'builtin') {
+    const pinned = cams.find(c => c.deviceId === want);
+    // A pinned camera that has been unplugged falls through to auto rather
+    // than dead-ending the booth mid-event.
+    if (pinned) return {deviceId: {exact: pinned.deviceId}};
+  }
+  if (want === 'builtin') return {facingMode: 'user'};
+
+  const external = cams.find(c => isExternalCamera(c.label));
+  return external ? {deviceId: {exact: external.deviceId}} : {facingMode: 'user'};
+}
+
+/// The device the open stream is actually on, for Admin and for the upgrade
+/// check below.
+function activeCameraId(){
+  const track = stream && stream.getVideoTracks()[0];
+  if (!track || !track.getSettings) return '';
+  return track.getSettings().deviceId || '';
+}
+
+/* `enumerateDevices` hands back blank labels until the page holds a camera
+ * grant, so the very first open of a fresh install cannot tell a USB camera
+ * from the built-in one and lands on the built-in. Once a stream exists the
+ * labels are real — so look again, and switch if the camera someone plugged
+ * in was there all along. Runs only on AUTO; a pinned choice is obeyed. */
+async function upgradeToExternalCamera(){
+  if ((settings.cameraId || 'auto') !== 'auto') return;
+  const cams = await listCameras();
+  const external = cams.find(c => isExternalCamera(c.label));
+  if (!external || external.deviceId === activeCameraId()) return;
+  try {
+    const better = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {deviceId: {exact: external.deviceId},
+              width: {ideal: 1920}, height: {ideal: 1080}},
+    });
+    stopCamera();
+    stream = better;
+    video.srcObject = stream;
+    try { await video.play(); } catch {}
+  } catch {
+    // The built-in one is already running and working. Keep it.
+  }
+}
+
 async function startCamera(){
   if (stream) return true;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1107,18 +1187,16 @@ async function startCamera(){
                  'http://localhost, not as a file:// document.');
     return false;
   }
+  const wanted = await resolveCamera();
   const constraints = {
     audio: false,
-    video: settings.cameraId
-      ? {deviceId: {exact: settings.cameraId}, width: {ideal: 1920}, height: {ideal: 1080}}
-      : {facingMode: 'user', width: {ideal: 1920}, height: {ideal: 1080}},
+    video: Object.assign({width: {ideal: 1920}, height: {ideal: 1080}}, wanted),
   };
   try {
     stream = await navigator.mediaDevices.getUserMedia(constraints);
   } catch (err) {
-    // A saved camera that has been unplugged must not dead-end the booth.
-    if (settings.cameraId) {
-      settings.cameraId = ''; saveSettings();
+    // A chosen camera that has been unplugged must not dead-end the booth.
+    if (constraints.video.deviceId) {
       try { stream = await navigator.mediaDevices.getUserMedia({audio:false, video:true}); }
       catch (e2) { showCamError(cameraMessage(e2)); return false; }
     } else {
@@ -1129,6 +1207,7 @@ async function startCamera(){
   video.srcObject = stream;
   camMsg.hidden = true;
   try { await video.play(); } catch {}
+  await upgradeToExternalCamera();
   return true;
 }
 
@@ -1137,7 +1216,11 @@ function cameraMessage(err){
   if (name === 'NotAllowedError')
     return 'Camera access was refused.\n\nAllow it for this site in Safari ›\n' +
            'Settings for This Website, or in Chrome\'s address-bar camera icon,\nthen press START again.';
-  if (name === 'NotFoundError') return 'No camera was found on this Mac.';
+  if (name === 'NotFoundError')
+    return 'No camera was found.\n\nIf a USB camera is plugged in, check it is\n' +
+           'switched on. A Kodak Charmera only appears as a camera\n' +
+           'when there is no memory card in it — with a card it\n' +
+           'mounts as a drive instead.';
   if (name === 'NotReadableError')
     return 'The camera is busy.\n\nAnother app (Zoom, Photo Booth, another tab)\nhas it open — quit that first.';
   return 'The camera could not be opened.\n\n' + (err && err.message ? err.message : '');
@@ -1153,6 +1236,16 @@ function stopCamera(){
   stream.getTracks().forEach(t => t.stop());
   stream = null;
   video.srcObject = null;
+}
+
+/* Someone plugs the camera in while the booth is sitting on the attract
+ * screen — which is exactly when they would — so drop the open stream and
+ * let the next session pick again. Never mid-session: yanking the camera
+ * out from under a countdown is worse than finishing on the built-in one. */
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    if (session.step === 'attract' || session.step === 'admin') stopCamera();
+  });
 }
 
 /* Grabs the current frame at the camera's own resolution.
@@ -1538,6 +1631,8 @@ function printerLabel(){
 }
 
 function showConfirm(){
+  // Nobody was asked for a copy count, so it is the operator's default.
+  if (settings.quickPrint) session.copies = Math.min(settings.defaultCopies, settings.maxCopies);
   compose();
   const host = el('#confirm-sheet');
   host.innerHTML = '';
@@ -1551,7 +1646,15 @@ function showConfirm(){
   // A phone stage has room for the essentials only. Sheet size and printer
   // are operator detail; layout, paper and copies are what a guest is being
   // asked to confirm.
-  const rows = compactStage()
+  // With the options hidden there is nothing here for a guest to decide, so
+  // the whole spec block goes: they are looking at the print itself.
+  screens.confirm.classList.toggle('quick', settings.quickPrint);
+  el('#confirm-spec-mod').hidden = settings.quickPrint;
+  el('[data-act="save-png"]').hidden = settings.quickPrint;
+  // BACK stays: a guest must always be able to go back and retake.
+
+  const rows = settings.quickPrint ? []
+    : compactStage()
     ? [['LAYOUT', session.layout.name + ' / ' + session.layout.subtitle],
        ['PAPER',  media.shortName],
        ['COPIES', session.copies === 1 ? '1 PRINT' : session.copies + ' PRINTS']]
@@ -1808,12 +1911,23 @@ async function renderAdmin(){
   const cams = await listCameras();
   const parts = [];
 
+  // What AUTO would pick right now, so the operator can see the booth has
+  // actually found the camera they plugged in.
+  const external = cams.find(c => isExternalCamera(c.label));
+  const inUse = cams.find(c => c.deviceId === activeCameraId());
   parts.push(section('CAMERA', 'camera', [
     row('DEVICE', seg('cameraId',
-      [['', 'DEFAULT']].concat(cams.map(c => [c.deviceId, c.label])), settings.cameraId)),
+      [['auto', 'AUTO (USB FIRST)'], ['builtin', 'BUILT-IN']]
+        .concat(cams.map(c => [c.deviceId, c.label])), settings.cameraId || 'auto')),
+    row('IN USE', '<div class="seg"><button class="on">' +
+        escapeHTML((inUse && inUse.label) || (stream ? 'BUILT-IN' : 'NOT OPEN')) +
+        '</button></div>'),
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
     row('COUNTDOWN', num('countdownSeconds', 1, 10, 1, 's')),
     row('SHOT GAP', num('betweenShotsSeconds', 0.5, 6, 0.5, 's')),
+    note(external ? 'info' : 'warn', external
+      ? 'AUTO is using the plugged-in camera: ' + external.label + '. Unplug it and the booth falls back to the built-in lens on the next session.'
+      : usbCameraNote()),
     note('info', 'The preview is mirrored so people can pose. The saved photo never is — a mirrored print reverses every logo in the room.'),
   ]));
 
@@ -1821,6 +1935,12 @@ async function renderAdmin(){
   const printRows = [
     row('PAPER', seg('mediaID', Object.values(MEDIA).map(m => [m.id, m.name]), settings.mediaID)),
     row('MAX COPIES', num('maxCopies', 1, 20, 1, '')),
+    row('COPIES PER PRINT', num('defaultCopies', 1, 20, 1, '')),
+    row('PRINT OPTIONS', seg('quickPrint',
+      [[true, 'HIDDEN'], [false, 'SHOWN']], settings.quickPrint)),
+    note(settings.quickPrint ? 'info' : 'warn', settings.quickPrint
+      ? 'Hidden: the guest sees their print and one PRINT button. No copy count, no spec, no save. COPIES PER PRINT above is what comes out.'
+      : 'Shown: the guest picks a copy count and sees the sheet spec before printing.'),
   ];
   if (NATIVE) {
     // On the tablet the mode is a real choice, not an inference.
@@ -1907,6 +2027,26 @@ function thermalSection(){
   return section('BLUETOOTH PRINTER', 'printer', rows);
 }
 
+/* What to tell the operator when AUTO found no external camera. On the
+ * tablet the shell can see the USB bus, so it can tell "nothing is plugged
+ * in" apart from "something is plugged in but Android is not handing it to
+ * apps" — which look identical from the web page and need opposite fixes. */
+function usbCameraNote(){
+  let attached = '';
+  try { attached = NATIVE ? (NATIVE.usbCameras() || '') : ''; } catch {}
+  const names = attached.split('\n').filter(Boolean);
+  if (names.length) {
+    return 'A USB camera is plugged in (' + names.join(', ') + ') but Android is ' +
+           'not offering it to apps, so the booth cannot preview from it. On a ' +
+           'Kodak Charmera, take the memory card out — with a card in it comes ' +
+           'up as a drive, not a camera. Otherwise this tablet\'s Android does ' +
+           'not support external cameras and the built-in lens is the only option.';
+  }
+  return 'No USB camera detected — AUTO is using the built-in lens. Plug a ' +
+         'camera into USB-C and it is picked up on the next session. A Kodak ' +
+         'Charmera must have no memory card in it to come up as a camera.';
+}
+
 const section = (title, icon, rows) =>
   '<div class="sec"><h4><span class="ic" data-icon="' + icon + '" data-size="26"></span>' +
   '<span class="px" data-cell="4">' + title + '</span></h4>' + rows.join('') + '</div>';
@@ -1986,9 +2126,11 @@ function wireAdmin(root){
 function afterSettingChange(key){
   if (key === 'mirrorPreview') applyMirror();
   if (key === 'cameraId') stopCamera();
+  if (key === 'quickPrint') saveSettings();
   if (key === 'maxCopies') session.copies = Math.min(session.copies, settings.maxCopies);
   // Anything that changes how a sheet looks re-renders the tiles, so the
   // operator sees the paper change as they type.
+  if (key === 'quickPrint') renderAdmin();
   if (key === 'mediaID' || key === 'printMode') {
     applySheetAspect(); updateAttractCount(); renderAdmin();
   }
@@ -2038,9 +2180,12 @@ const ACTIONS = {
   start: begin,
   abandon: abandon,
   retake: retake,
-  keep: showCopies,
+  keep: () => settings.quickPrint ? showConfirm() : showCopies(),
   'to-review': showReview,
   'to-copies': showCopies,
+  // LOOKS GOOD skips the copy count when the options are hidden, and BACK
+  // from the confirm screen has to skip it in the other direction too.
+  'confirm-back': () => settings.quickPrint ? showReview() : showCopies(),
   'to-confirm': showConfirm,
   'copies-up': () => { session.copies = Math.min(settings.maxCopies, session.copies + 1); updateCopies(); },
   'copies-down': () => { session.copies = Math.max(1, session.copies - 1); updateCopies(); },
