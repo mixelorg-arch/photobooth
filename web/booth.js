@@ -1929,6 +1929,11 @@ async function renderAdmin(){
           ? (usbDevices().map(d => d.name + ' / ' + d.kind).join('  ·  ') || 'EMPTY')
           : 'N/A IN BROWSER') +
         '</button></div>'),
+    // And what Android's own camera system makes of it. A video device on the
+    // bus with no EXTERNAL here is a tablet that will never share the camera.
+    row('ANDROID SEES', '<div class="seg"><button class="on">' +
+        escapeHTML(NATIVE ? (systemCameras() || 'NONE') : 'N/A IN BROWSER') +
+        '</button></div>'),
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
     row('COUNTDOWN', num('countdownSeconds', 1, 10, 1, 's')),
     row('SHOT GAP', num('betweenShotsSeconds', 0.5, 6, 0.5, 's')),
@@ -2044,6 +2049,14 @@ function usbDevices(){
   });
 }
 
+/// Cameras Android itself lists, as "0 BACK · 1 FRONT · 2 EXTERNAL".
+function systemCameras(){
+  let raw = '';
+  try { raw = NATIVE && NATIVE.systemCameras ? (NATIVE.systemCameras() || '') : ''; } catch {}
+  return raw.split('\n').filter(Boolean)
+            .map(l => l.split('\t').join(' ')).join('  ·  ');
+}
+
 /* What to tell the operator when AUTO found no external camera.
  *
  * Three different things look identical from the web page — nothing plugged
@@ -2071,10 +2084,14 @@ function usbCameraNote(){
   }
   const video = devices.find(d => d.kind === 'VIDEO');
   if (video) {
-    return video.name + ' is plugged in as a camera, but this tablet\'s Android ' +
-           'is not offering it to apps, so no app on it can preview from the ' +
-           'camera. That is the tablet, not the booth. The built-in lens is the ' +
-           'only option on this device.';
+    const external = /EXTERNAL/.test(systemCameras());
+    return video.name + ' is plugged in as a camera. ' + (external
+      ? 'Android lists it as an EXTERNAL camera, so the tablet does share it — ' +
+        'but the browser engine the booth draws in is not passing it through. ' +
+        'That is fixable in the app.'
+      : 'Android does not list it as a camera at all, so no app on this tablet ' +
+        'can preview from it through the normal camera system. That is the ' +
+        'tablet, not the booth.');
   }
   return devices.map(d => d.name).join(', ') + ' is plugged in, but not as a ' +
          'camera or a drive. If this is the Charmera, take its memory card out ' +
