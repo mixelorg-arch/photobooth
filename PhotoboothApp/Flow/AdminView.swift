@@ -292,6 +292,16 @@ private struct CaptureSection: View {
                           range: 1...10, suffix: "S") { store.settings.countdownSeconds = $0 }
                 NumberRow(title: "MAX COPIES", value: store.settings.maxCopies,
                           range: 1...20, suffix: "") { store.settings.maxCopies = $0 }
+                NumberRow(title: "COPIES PER PRINT", value: store.settings.defaultCopies,
+                          range: 1...20, suffix: "") { store.settings.defaultCopies = $0 }
+                SegmentedRow(title: "PRINT OPTIONS",
+                             options: [("hidden", "HIDDEN"), ("shown", "SHOWN")],
+                             selection: store.settings.hidePrintOptions ? "hidden" : "shown") {
+                    store.settings.hidePrintOptions = ($0 == "hidden")
+                }
+                AdminNote(kind: .info, text: store.settings.hidePrintOptions
+                    ? "Hidden: the guest sees their print and one PRINT button. No copy count, no spec, no save. COPIES PER PRINT above is what comes out."
+                    : "Shown: the guest picks a copy count and sees the sheet spec before printing.")
                 AdminNote(kind: .info,
                           text: "The preview is mirrored so people can pose. The saved photo never is — a mirrored print reverses every logo in the room.")
             }

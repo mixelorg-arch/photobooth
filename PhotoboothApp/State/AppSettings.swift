@@ -34,6 +34,10 @@ struct AppSettings: Codable, Equatable {
 
     var defaultCopies: Int = 1
     var maxCopies: Int = 10
+    /// Hide the print options from the guest: no copy count, no spec table,
+    /// no save. Press PRINT and paper comes out; `defaultCopies` decides how
+    /// much of it.
+    var hidePrintOptions: Bool = true
 
     var printerTarget: PrinterTarget = .airPrint
     /// `UIPrinter.url.absoluteString` of the last printer used, so the guest

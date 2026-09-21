@@ -86,15 +86,11 @@ struct PanelHeader: View {
                 }
             }
 
-            // The hatch and the badge are scenery; the wordmark and the step
-            // counter are not. On a phone the scenery goes so the wordmark
-            // keeps a size worth reading.
-            if !size.isCompact {
-                PixelIconView(icon: .camera, size: 30, color: Panel.ink)
-                    .frame(width: square, height: square)
-                    .heavyFramed()
-                Hatch()
-            }
+            // The hatch is scenery; the wordmark and the step counter are
+            // not. On a phone the scenery goes so the wordmark keeps a size
+            // worth reading. The camera badge that used to sit here was
+            // removed — the header says PHOTOBOOTH already.
+            if !size.isCompact { Hatch() }
             PixelText(text: "PHOTOBOOTH", cell: size.pick(8, 4))
                 .layoutPriority(-1)
             if !size.isCompact { Hatch() } else { Spacer(minLength: 8) }

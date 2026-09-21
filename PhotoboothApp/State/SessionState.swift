@@ -128,6 +128,12 @@ final class SessionState: ObservableObject {
         go(.layout)
     }
 
+    /// Nobody is asked for a copy count when the print options are hidden,
+    /// so it is the operator's default.
+    func applyDefaultCopies() {
+        copies = min(settings.defaultCopies, settings.maxCopies)
+    }
+
     func chooseLayout(_ template: LayoutTemplate) {
         layout = template
         photos = Array(repeating: nil, count: template.shotCount)

@@ -8,6 +8,9 @@ struct PrintConfirmView: View {
     let layout: LayoutTemplate
     let media: PrintMedia
     let copies: Int
+    /// Hide the spec block, the save button and the copy count: the guest is
+    /// looking at their print, and the only thing left to do is take it.
+    var hideOptions: Bool = false
     let printerName: String
     let printerTarget: PrinterTarget
     let onBack: () -> Void
@@ -46,11 +49,14 @@ struct PrintConfirmView: View {
                 }
                 // The sheet takes a share of a phone stage, never all of it:
                 // the controls under it have to fit, because a kiosk has
-                // nowhere to scroll to.
-                .frame(width: size.isCompact ? nil : 420,
+                // nowhere to scroll to. With the options hidden the other
+                // pane holds two buttons and nothing else, so the print
+                // itself takes the room rather than a field of white.
+                .frame(width: size.isCompact ? nil : (hideOptions ? 760 : 420),
                        height: size.isCompact ? (short ? 230 : 300) : nil)
             } detail: {
                 VStack(spacing: size.pick(18, 12)) {
+                    if !hideOptions {
                     PanelModule(title: "READY TO PRINT") {
                         // A phone stage has room for the essentials only.
                         // Sheet size, printer and transport are operator
@@ -69,6 +75,7 @@ struct PrintConfirmView: View {
                                 SpecRow(key: "VIA", value: printerTarget.displayName)
                             }
                         }
+                    }
                     }
 
                     Spacer(minLength: 0)

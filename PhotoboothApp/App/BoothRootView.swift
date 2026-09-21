@@ -72,7 +72,16 @@ struct BoothRootView: View {
                        branding: store.settings.branding(for: session.layout,
                                                          times: session.captureTimes),
                        mono: store.settings.photoMono,
-                       onKeep: { session.go(.copies) },
+                       // With the options hidden there is no copy count to
+                       // ask for: LOOKS GOOD goes straight to the print.
+                       onKeep: {
+                           if store.settings.hidePrintOptions {
+                               session.applyDefaultCopies()
+                               session.go(.confirm)
+                           } else {
+                               session.go(.copies)
+                           }
+                       },
                        onRetake: { session.retake() },
                        onClose: { session.abandon() })
 
@@ -89,9 +98,10 @@ struct BoothRootView: View {
                              layout: session.layout,
                              media: store.settings.media,
                              copies: session.copies,
+                             hideOptions: store.settings.hidePrintOptions,
                              printerName: session.printerDescription,
                              printerTarget: store.settings.printerTarget,
-                             onBack: { session.go(.copies) },
+                             onBack: { session.go(store.settings.hidePrintOptions ? .review : .copies) },
                              onPrint: { session.submitPrint() },
                              onClose: { session.abandon() })
 

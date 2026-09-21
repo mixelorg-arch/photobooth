@@ -85,6 +85,21 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    /// The camera to open: an external one if anything is plugged in, else
+    /// the built-in lens on the requested side.
+    private nonisolated static func preferredDevice(facing: CameraFacing) -> AVCaptureDevice? {
+        if #available(iOS 17.0, *) {
+            let external = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [.external], mediaType: .video, position: .unspecified)
+            if let plugged = external.devices.first { return plugged }
+        }
+        let position: AVCaptureDevice.Position = (facing == .front) ? .front : .back
+        return AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera],
+            mediaType: .video,
+            position: position).devices.first
+    }
+
     /// Runs on `queue`.
     private nonisolated func configureSession() {
         session.beginConfiguration()
@@ -94,13 +109,12 @@ final class CameraController: NSObject, ObservableObject {
 
         for existing in session.inputs { session.removeInput(existing) }
 
-        let position: AVCaptureDevice.Position = (facing == .front) ? .front : .back
-        let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera],
-            mediaType: .video,
-            position: position)
-
-        guard let device = discovery.devices.first,
+        // A camera someone plugged in wins over the tablet's own lens: they
+        // connected it on purpose. iPadOS 17 and up hand a UVC camera over as
+        // `.external`, which is how a Kodak Charmera arrives — but only with
+        // no card in it, since with a card it mounts as a drive instead and
+        // no app can take a preview from it.
+        guard let device = Self.preferredDevice(facing: facing),
               let deviceInput = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(deviceInput) else {
             Task { @MainActor in self.lastError = CameraError.unavailable.localizedDescription }
