@@ -189,12 +189,22 @@ const MEDIA = {
                    shortName:'A6',           w:4.134, h:5.827, dpi:300},
   'letter':       {id:'letter',       name:'US Letter (plain paper test)',
                    shortName:'US LETTER',    w:8.5,   h:11,    dpi:200},
+  /* The other two SELPHY CP1500 papers, at Canon's own figures — L size and
+   * the credit-card size. Both need their own paper and ribbon kit; the card
+   * one also needs the separate PCC-CP400 cassette. */
+  'selphy-l':     {id:'selphy-l',     name:'L size 89 x 119 mm (SELPHY)',
+                   shortName:'L SELPHY',     w:89/25.4,  h:119/25.4, dpi:300},
+  'selphy-card':  {id:'selphy-card',  name:'Card 54 x 86 mm (SELPHY)',
+                   shortName:'CARD SELPHY',  w:54/25.4,  h:86/25.4,  dpi:300},
+  /* 58mm roll: 48mm printable, 384 dots — the pocket-printer width. */
+  'thermal-58':   {id:'thermal-58',   name:'58mm Thermal Roll (receipt)',
+                   shortName:'58MM ROLL',    w:384/203, h:0,   dpi:203, flow:true, paperW:58},
   /* An 80mm thermal roll. 72mm of that is printable on every common head,
    * and at 203dpi that is 576 dots — the width nearly every ESC/POS printer
    * expects. Height is not a paper size at all: a receipt is as long as its
    * content, so `flow` tells the renderer to measure instead of fit. */
   'thermal-80':   {id:'thermal-80',   name:'80mm Thermal Roll (receipt)',
-                   shortName:'80MM ROLL',    w:576/203, h:0,   dpi:203, flow:true},
+                   shortName:'80MM ROLL',    w:576/203, h:0,   dpi:203, flow:true, paperW:80},
 };
 const mediaPixels = m => ({w: Math.round(m.w * m.dpi), h: Math.round(m.h * m.dpi)});
 
@@ -404,8 +414,10 @@ const layoutById = id => LAYOUTS.find(l => l.id === id) || LAYOUTS[0];
  * so a tile can never disagree with the paper.
  * ==================================================================== */
 function renderSheet(photos, tpl, media, branding, scale, opts){
-  // A roll has no page to fit, so it flows instead. Same entry point either
-  // way: nothing that asks for a sheet needs to know which it got.
+  // Three engines behind one entry point: a layout from the editor places
+  // its elements where they were put; a roll flows; a sheet fits. Nothing
+  // that asks for a sheet needs to know which it got.
+  if (tpl.kind === 'canvas') return renderCanvas(photos, tpl, media, branding, scale, opts || {});
   if (media.flow) return renderReceipt(photos, tpl, media, branding, scale, opts || {});
 
   const px = mediaPixels(media);
@@ -417,19 +429,8 @@ function renderSheet(photos, tpl, media, branding, scale, opts){
   g.fillStyle = tpl.background;
   g.fillRect(0, 0, W, H);
 
-  const short = Math.min(W, H), long = Math.max(W, H);
-  const margin = tpl.margin * short;
-  const footer = tpl.footer * long;
-
-  // Content is the sheet inside the margin, with the footer strip taken off
-  // the bottom.
-  const content = {
-    x: margin, y: margin,
-    w: W - margin * 2,
-    h: H - margin - Math.max(margin, footer),
-  };
-
-  drawSlots(g, content, photos, tpl, short, opts || {});
+  const short = Math.min(W, H);
+  drawSlots(g, slotRects(tpl, W, H), photos, tpl, short, opts || {});
 
   // The editorial layer: rules and type, placed against the paper edge like
   // a magazine rather than inside the photo grid. A duplicate-strip sheet
@@ -443,12 +444,24 @@ function renderSheet(photos, tpl, media, branding, scale, opts){
   return c;
 }
 
-function drawSlots(g, content, photos, tpl, short, opts){
+/* Where every photograph lands on a W x H sheet, in pixels. Pulled out of
+ * drawSlots so the layout editor can turn a built-in layout into editable
+ * boxes with exactly the geometry it prints with, rather than a second
+ * approximation of it. */
+function slotRects(tpl, W, H){
+  const short = Math.min(W, H), long = Math.max(W, H);
+  const margin = tpl.margin * short;
+  const footer = tpl.footer * long;
+  // Content is the sheet inside the margin, with the footer strip taken off
+  // the bottom.
+  const content = {
+    x: margin, y: margin,
+    w: W - margin * 2,
+    h: H - margin - Math.max(margin, footer),
+  };
   const gutter = tpl.gutter * short;
-  const radius = tpl.radius * short;
-  const keyline = (tpl.keyline || 0) * short;
 
-  tpl.slots.forEach((unit, i) => {
+  return tpl.slots.map((unit, i) => {
     // Which photograph this slot shows. Two slots may share one source —
     // that is exactly how a double strip works.
     const src = unit.src === undefined ? i : unit.src;
@@ -463,6 +476,15 @@ function drawSlots(g, content, photos, tpl, short, opts){
     if (unit.w < 1) { r.x += gutter / 2; r.w -= gutter; }
     if (unit.h < 1) { r.y += gutter / 2; r.h -= gutter; }
     if (tpl.cellAspect) r = fitted(tpl.cellAspect, r);
+    return {r, src};
+  });
+}
+
+function drawSlots(g, rects, photos, tpl, short, opts){
+  const radius = tpl.radius * short;
+  const keyline = (tpl.keyline || 0) * short;
+
+  rects.forEach(({r, src}) => {
     if (r.w < 1 || r.h < 1) return;
 
     g.save();
@@ -781,6 +803,30 @@ function wrapParagraph(g, text, b, W, cw){
   return lines;
 }
 
+/* A justified paragraph, already wrapped. Every line but the last is set to
+ * the full measure by opening the word spaces, like the reference receipt.
+ * Shared by the receipt and by the layout editor's paragraph element. */
+function drawParagraph(g, lines, b, W, left, top, cw, colour){
+  const o = segOpts(b, W);
+  if (colour) o.colour = colour;
+  const step = b.size * W * (b.leading || 1.7);
+  const justify = b.justify !== false;
+  lines.forEach((line, i) => {
+    const baseline = top + i * step + o.size * 0.80;
+    const x0 = left + line.indent;
+    const room = cw - line.indent;
+    const natural = runMetrics(g, [...line.words.join(' ')], o).width;
+    const extra = (justify && !line.last && line.words.length > 1)
+      ? (room - natural) / (line.words.length - 1) : 0;
+    const space = runMetrics(g, [' '], o).width;
+    let x = x0;
+    for (const word of line.words) {
+      x += drawRun(g, word, Object.assign({}, o, {x, y: baseline, align: 'left'}))
+         + space + extra;
+    }
+  });
+}
+
 function receiptText(text, brand, tpl){
   return text === undefined ? '' : resolveToken(text, brand, tpl);
 }
@@ -892,27 +938,9 @@ function drawReceipt(g, plan, tpl, brand, photos, W, opts){
         break;
       }
 
-      case 'para': {
-        const o = segOpts(b, W);
-        const step = b.size * W * (b.leading || 1.7);
-        item.lines.forEach((line, i) => {
-          const baseline = y + i * step + o.size * 0.80;
-          const x0 = pad + line.indent;
-          const room = cw - line.indent;
-          const natural = runMetrics(g, [...line.words.join(' ')], o).width;
-          // Justified, like the reference — every line but the last is set
-          // to the full measure by opening the word spaces.
-          const extra = (!line.last && line.words.length > 1)
-            ? (room - natural) / (line.words.length - 1) : 0;
-          const space = runMetrics(g, [' '], o).width;
-          let x = x0;
-          for (const word of line.words) {
-            x += drawRun(g, word, Object.assign({}, o, {x, y: baseline, align: 'left'}))
-               + space + extra;
-          }
-        });
+      case 'para':
+        drawParagraph(g, item.lines, b, W, pad, y, cw);
         break;
-      }
 
       case 'qr': {
         const link = receiptText(b.text || '{link}', brand, tpl);
@@ -929,6 +957,377 @@ function drawReceipt(g, plan, tpl, brand, photos, W, opts){
   }
 }
 
+
+/* ==================================================================== *
+ * Canvas layouts — the ones the layout editor makes.
+ *
+ * The built-in layouts are two engines: a sheet (slots inside margins, plus
+ * an editorial layer) and a receipt (a flow of blocks). The editor needs
+ * something anyone can reason about by looking at it, so its layouts are a
+ * third, simpler thing: a list of elements, each placed where it was put.
+ *
+ * Every coordinate is a fraction of the page — x and w of its width, y and h
+ * of its height — so one design prints correctly on any paper of the same
+ * shape and sensibly on one that is not. Type sizes, like the sheet's decor,
+ * are fractions of the width. A text element's `y` is its baseline.
+ *
+ * On a roll there is no page height, so a canvas layout carries its own
+ * `length` in millimetres. That is what lets a designed receipt sit on the
+ * same 58 or 80 mm paper as the built-in ones.
+ * ==================================================================== */
+const ELEMENT_TYPES = ['photo', 'text', 'para', 'line', 'box', 'qr', 'shots'];
+
+function canvasPixels(tpl, media){
+  const w = Math.round(media.w * media.dpi);
+  const h = media.flow
+    ? Math.max(1, Math.round((tpl.length || 150) / 25.4 * media.dpi))
+    : Math.round(media.h * media.dpi);
+  return {w, h};
+}
+
+const colourOf = c =>
+  !c || c === 'ink' ? INK
+  : c === 'dim' ? 'rgba(17,17,17,0.55)'
+  : c === 'paper' ? '#FFFFFF'
+  : c;
+
+function renderCanvas(photos, tpl, media, brand, scale, opts){
+  const px = canvasPixels(tpl, media);
+  const W = Math.max(1, Math.round(px.w * (scale || 1)));
+  const H = Math.max(1, Math.round(px.h * (scale || 1)));
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = tpl.background || '#FFFFFF';
+  g.fillRect(0, 0, W, H);
+
+  const mono = opts.mono !== undefined ? opts.mono : tpl.mono;
+  (tpl.elements || []).forEach((el, i) => {
+    const box = drawElement(g, el, W, H, photos, tpl, brand, mono, opts);
+    // The editor hit-tests against where things were actually drawn, not
+    // where the numbers say, so a shrunk-to-fit title is grabbed by its ink.
+    if (opts.boxes) opts.boxes[i] = box;
+  });
+  return c;
+}
+
+function drawElement(g, el, W, H, photos, tpl, brand, mono, opts){
+  const editing = !!opts.editing;
+  switch (el.t) {
+
+    case 'photo': {
+      const r = {x: el.x * W, y: el.y * H, w: el.w * W, h: el.h * H};
+      if (r.w < 1 || r.h < 1) return r;
+      const radius = (el.radius || 0) * W;
+      const path = () => {
+        g.beginPath();
+        if (radius > 0 && g.roundRect) g.roundRect(r.x, r.y, r.w, r.h, radius);
+        else g.rect(r.x, r.y, r.w, r.h);
+      };
+      g.save(); path(); g.clip();
+      const photo = photos && photos[el.src | 0];
+      if (photo) {
+        if (mono) g.filter = 'grayscale(1) contrast(1.06)';
+        drawCovering(g, photo, r, el.fit || 'fill');
+        g.filter = 'none';
+      } else {
+        g.fillStyle = 'rgba(0,0,0,0.10)';
+        g.fillRect(r.x, r.y, r.w, r.h);
+        if (opts.numberEmptySlots) {
+          g.fillStyle = 'rgba(0,0,0,0.28)';
+          g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.font = '900 ' + Math.round(Math.min(r.w, r.h) * 0.42) +
+                   'px ui-monospace, Menlo, monospace';
+          g.fillText(String((el.src | 0) + 1), r.x + r.w / 2, r.y + r.h / 2);
+        }
+      }
+      g.restore();
+      if (el.keyline > 0) {
+        g.save(); path();
+        g.strokeStyle = colourOf(el.keylineColour);
+        g.lineWidth = Math.max(1, el.keyline * W);
+        g.stroke(); g.restore();
+      }
+      return r;
+    }
+
+    case 'box': {
+      const r = {x: el.x * W, y: el.y * H, w: el.w * W, h: el.h * H};
+      g.fillStyle = colourOf(el.colour);
+      const radius = (el.radius || 0) * W;
+      g.beginPath();
+      if (radius > 0 && g.roundRect) g.roundRect(r.x, r.y, r.w, r.h, radius);
+      else g.rect(r.x, r.y, r.w, r.h);
+      g.fill();
+      return r;
+    }
+
+    case 'line': {
+      const weight = Math.max(1, (el.weight || 0.003) * W);
+      const x0 = el.x * W, y0 = el.y * H, len = el.w * W;
+      g.fillStyle = colourOf(el.colour);
+      if (el.dash > 0) {
+        const seg = el.dash * W;
+        const gap = (el.gap > 0 ? el.gap : el.dash * 0.8) * W;
+        for (let x = x0; x < x0 + len - 0.5; x += seg + gap)
+          g.fillRect(x, y0, Math.min(seg, x0 + len - x), weight);
+      } else {
+        g.fillRect(x0, y0, len, weight);
+      }
+      return {x: x0, y: y0, w: len, h: weight};
+    }
+
+    case 'text': {
+      let text = resolveToken(el.text || '', brand, tpl);
+      let colour = colourOf(el.colour);
+      // An empty token is invisible on paper, which is right — and in the
+      // editor it would be an element you could never find again. Show the
+      // template itself there, faintly.
+      if (!text && editing) { text = el.text || 'TEXT'; colour = 'rgba(17,17,17,0.25)'; }
+      if (!text) return null;
+      if (el.case === 'upper') text = text.toUpperCase();
+      const o = {
+        size: el.size * W,
+        tracking: (el.tracking || 0) * el.size * W,
+        weight: el.weight || 400,
+        italic: !!el.italic,
+        face: FACE[el.face || 'sans'],
+        colour,
+        maxWidth: el.fit ? el.fit * W : null,
+      };
+      const m = runMetrics(g, [...text], o);
+      const x = el.x * W, y = el.y * H;
+      drawRun(g, text, Object.assign({}, o, {x, y, align: el.align || 'left'}));
+      const left = el.align === 'right' ? x - m.width
+                 : el.align === 'centre' ? x - m.width / 2 : x;
+      return {x: left, y: y - m.size * 0.80, w: m.width, h: m.size};
+    }
+
+    case 'para': {
+      let text = resolveToken(el.text || '', brand, tpl);
+      let colour = colourOf(el.colour);
+      if (!text && editing) { text = el.text || 'Paragraph'; colour = 'rgba(17,17,17,0.25)'; }
+      const left = el.x * W, top = el.y * H, cw = el.w * W;
+      if (!text) return {x: left, y: top, w: cw, h: el.size * W};
+      const b = {size: el.size, face: el.face || 'mono', weight: el.weight || 400,
+                 italic: !!el.italic, tracking: el.tracking || 0,
+                 leading: el.leading || 1.7, indent: el.indent || 0,
+                 justify: el.justify !== false};
+      const lines = wrapParagraph(g, text, b, W, cw);
+      drawParagraph(g, lines, b, W, left, top, cw, colour);
+      return {x: left, y: top, w: cw,
+              h: Math.max(1, lines.length) * el.size * W * b.leading};
+    }
+
+    case 'qr': {
+      const side = el.size * W;
+      const r = {x: el.x * W, y: el.y * H, w: side, h: side};
+      const link = resolveToken(el.text || '{link}', brand, tpl);
+      if (link) {
+        try { QR.draw(g, link, {x: r.x, y: r.y, size: side}, colourOf(el.colour)); }
+        catch (e) { console.warn('QR skipped:', e.message); }
+      } else if (editing) {
+        // No link set yet: a placeholder, so the operator can see where the
+        // code will go and grab it. Nothing prints until a link exists.
+        g.save();
+        g.strokeStyle = 'rgba(17,17,17,0.35)'; g.lineWidth = Math.max(1, side * 0.02);
+        g.setLineDash([side * 0.06, side * 0.05]);
+        g.strokeRect(r.x, r.y, side, side);
+        g.fillStyle = 'rgba(17,17,17,0.35)';
+        g.font = '700 ' + Math.round(side * 0.16) + 'px ui-monospace, Menlo, monospace';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText('QR', r.x + side / 2, r.y + side / 2);
+        g.restore();
+      }
+      return r;
+    }
+
+    case 'shots': {
+      const rows = brand.tracks || [];
+      const size = el.size * W, step = size * (el.leading || 1.9);
+      const left = el.x * W, top = el.y * H, cw = el.w * W;
+      const o = {size, tracking: (el.tracking || 0) * size, weight: el.weight || 400,
+                 italic: false, face: FACE[el.face || 'mono'], colour: colourOf(el.colour),
+                 maxWidth: null};
+      rows.forEach((track, i) => {
+        const baseline = top + i * step + size * 0.80;
+        drawRun(g, track.label.toUpperCase(),
+                Object.assign({}, o, {x: left, y: baseline, align: 'left', maxWidth: cw * 0.72}));
+        drawRun(g, track.time, Object.assign({}, o, {x: left + cw, y: baseline, align: 'right'}));
+      });
+      return {x: left, y: top, w: cw, h: Math.max(1, rows.length) * step};
+    }
+  }
+  return null;
+}
+
+/* The photographs a canvas layout takes, in the shape the rest of the booth
+ * expects: `slots` carrying a `src`, so the shot count, the shot strip and
+ * per-frame retake all work unchanged. */
+function registerCanvasLayout(tpl){
+  const photos = (tpl.elements || []).filter(e => e.t === 'photo');
+  tpl.kind = 'canvas';
+  tpl.slots = photos.map(e => ({x: e.x, y: e.y, w: e.w, h: e.h, src: e.src | 0}));
+  tpl.shots = new Set(tpl.slots.map(s => s.src)).size;
+  // The capture guide takes the first photograph's true shape, so people
+  // frame themselves for the box they will actually print in.
+  const media = MEDIA[tpl.mediaID];
+  const first = photos[0];
+  if (media && first) {
+    const px = canvasPixels(tpl, media);
+    tpl.cellAspect = (first.w * px.w) / Math.max(1, first.h * px.h);
+  } else {
+    tpl.cellAspect = null;
+  }
+  tpl.fit = 'fill';
+  return tpl;
+}
+
+/* ------------------------------------------------------------------ *
+ * Built-in layout -> editable elements.
+ *
+ * So the operator can start from a design that already works instead of a
+ * blank page. It uses the geometry the layout actually prints with — the
+ * sheet's real slot rectangles, the receipt's measured flow — so a layout
+ * converted and printed unchanged comes out as it did before.
+ * ------------------------------------------------------------------ */
+function layoutToCanvas(tpl, media, brand){
+  const base = {
+    name: tpl.name, subtitle: tpl.subtitle || 'CUSTOM', accent: tpl.accent || '#A9A2CE',
+    mediaID: media.id, background: tpl.background || '#FFFFFF',
+    mono: tpl.mono !== false, elements: [],
+  };
+  if (tpl.kind === 'canvas') {
+    return Object.assign(base, {length: tpl.length, mono: !!tpl.mono,
+      elements: JSON.parse(JSON.stringify(tpl.elements || []))});
+  }
+  return media.flow ? receiptToCanvas(tpl, media, brand, base)
+                    : sheetToCanvas(tpl, media, base);
+}
+
+function sheetToCanvas(tpl, media, out){
+  const px = mediaPixels(media);
+  const W = px.w, H = px.h, short = Math.min(W, H);
+
+  for (const {r, src} of slotRects(tpl, W, H)) {
+    if (r.w < 1 || r.h < 1) continue;
+    out.elements.push({t: 'photo', x: r.x / W, y: r.y / H, w: r.w / W, h: r.h / H,
+      src, fit: tpl.fit || 'fill',
+      radius: (tpl.radius || 0) * short / W,
+      keyline: (tpl.keyline || 0) * short / W,
+      keylineColour: tpl.keylineColour || '#FFFFFF'});
+  }
+
+  // A duplicate-strip sheet draws its dressing once per strip; the editor has
+  // no notion of columns, so each copy becomes its own elements.
+  const columns = Math.max(1, tpl.footerColumns || 1);
+  for (let c = 0; c < columns; c++) {
+    const rx = (W / columns) * c, rw = W / columns, k = rw / W;
+    for (const item of tpl.decor || []) {
+      if (item.t === 'rule') {
+        out.elements.push({t: 'line', x: (rx + item.x * rw) / W, y: item.y,
+          w: item.w * k, weight: (item.weight || 0.0018) * k,
+          colour: item.colour === 'paper' ? 'paper' : 'ink'});
+      } else {
+        out.elements.push({t: 'text', text: item.text,
+          x: (rx + item.x * rw) / W, y: item.y, size: item.size * k,
+          tracking: item.tracking || 0, weight: item.weight || 400,
+          align: item.align || 'left', case: item.case, face: 'sans',
+          colour: item.colour === 'paper' ? 'paper'
+                : item.colour === 'dim' ? 'rgba(17,17,17,0.45)' : 'ink',
+          fit: item.fit ? item.fit * k : null});
+      }
+    }
+  }
+  return out;
+}
+
+function receiptToCanvas(tpl, media, brand, out){
+  const W = Math.round(media.w * media.dpi);
+  const plan = receiptPlan(tpl, brand, W, {});
+  const H = plan.height, pad = plan.pad, cw = plan.cw;
+
+  for (const item of plan.items) {
+    const b = item.b, y = item.y;
+    switch (b.t) {
+      case 'rule':
+        out.elements.push({t: 'line', x: pad / W, y: y / H, w: cw / W,
+          weight: b.weight || 0.004, dash: b.dash || 0, gap: b.gap || 0});
+        break;
+
+      case 'runs': {
+        let ly = y;
+        item.lines.forEach((line, li) => {
+          const baseline = (ly + line.cap * 0.80) / H;
+          const source = b.lines[li] || [];
+          if (line.segs.length === 1) {
+            const seg = source[0] || line.segs[0];
+            out.elements.push({t: 'text', text: seg.text, x: (pad + cw / 2) / W, y: baseline,
+              size: seg.size, tracking: seg.tracking || 0, weight: seg.weight || 400,
+              face: seg.face || 'mono', italic: !!seg.italic, case: seg.case,
+              colour: seg.colour === 'dim' ? 'dim' : 'ink', fit: seg.fit || null,
+              align: 'centre'});
+          } else {
+            let x = pad + (cw - line.width) / 2;
+            line.segs.forEach((s, si) => {
+              const seg = source[si] || s;
+              out.elements.push({t: 'text', text: seg.text, x: x / W, y: baseline,
+                size: seg.size, tracking: seg.tracking || 0, weight: seg.weight || 400,
+                face: seg.face || 'mono', italic: !!seg.italic, case: seg.case,
+                colour: seg.colour === 'dim' ? 'dim' : 'ink', align: 'left'});
+              x += s._w + line.space * s._o.size;
+            });
+          }
+          ly += line.h;
+        });
+        break;
+      }
+
+      case 'row': {
+        const baseline = (y + b.size * W * 0.80) / H;
+        out.elements.push({t: 'text', text: b.left, x: pad / W, y: baseline, size: b.size,
+          face: 'mono', case: 'upper', align: 'left'});
+        out.elements.push({t: 'text', text: b.right, x: (pad + cw) / W, y: baseline,
+          size: b.size, face: 'mono', align: 'right'});
+        break;
+      }
+
+      case 'tracks':
+        out.elements.push({t: 'shots', x: pad / W, y: y / H, w: cw / W,
+          size: b.size, leading: b.leading || 1.85, face: 'mono'});
+        break;
+
+      case 'photos': {
+        const cols = b.cols || 1, gap = (b.gap || 0) * W;
+        const cellW = (cw - gap * (cols - 1)) / cols, cellH = cellW / (b.aspect || 1);
+        for (let i = 0; i < tpl.shots; i++) {
+          out.elements.push({t: 'photo',
+            x: (pad + (i % cols) * (cellW + gap)) / W,
+            y: (y + Math.floor(i / cols) * (cellH + gap)) / H,
+            w: cellW / W, h: cellH / H, src: i, fit: 'fill'});
+        }
+        break;
+      }
+
+      case 'para':
+        out.elements.push({t: 'para', text: b.text, x: pad / W, y: y / H, w: cw / W,
+          size: b.size, leading: b.leading || 1.7, indent: b.indent || 0,
+          face: b.face || 'mono'});
+        break;
+
+      case 'qr': {
+        const side = b.size * W;
+        out.elements.push({t: 'qr', text: b.text || '{link}',
+          x: (pad + (cw - side) / 2) / W, y: y / H, size: b.size});
+        break;
+      }
+    }
+  }
+  // Hundredths of a millimetre: at 203 dpi a tenth is 0.8 of a dot, enough to
+  // round the page a pixel short and shift everything on it.
+  out.length = Math.round(H / media.dpi * 25.4 * 100) / 100;
+  return out;
+}
 
 function isDark(hex){
   const n = parseInt(hex.slice(1), 16);
@@ -1000,6 +1399,12 @@ const DEFAULTS = {
   quickPrint: true,
   /// Imaging width of the thermal head. 576 = 80mm, 384 = 58mm.
   thermalWidthDots: 576,
+  /* --- the layout editor --- */
+  /// Paper sizes the operator added, in the same shape as MEDIA.
+  customMedia: [],
+  /// Layouts made in the editor: {id, name, subtitle, accent, mediaID,
+  /// length, background, mono, elements}.
+  customLayouts: [],
   idleReturnSeconds: 90,
   thankYouSeconds: 6,
   adminPasscode: '1234',
@@ -1014,17 +1419,37 @@ function loadSettings(){
     merged = Object.assign({}, DEFAULTS, saved);
   } catch { merged = Object.assign({}, DEFAULTS); }
 
-  // A saved layout list can name layouts that no longer exist — the first
-  // six-layout build renamed 'four-full' to 'four-grid'. Drop what is gone,
-  // and if anything was dropped fall back to the full default list rather
-  // than leaving the operator with one tile and no way to guess why.
+  // The editor's papers and layouts have to be registered before the offered
+  // list is checked, or every custom layout would look unknown and be dropped.
+  registerCustom(merged);
+
+  // A saved list can name layouts that no longer exist — the first
+  // six-layout build renamed 'four-full' to 'four-grid', and a custom layout
+  // can be deleted. Drop only what is gone. An empty list for a paper falls
+  // back to everything that paper can hold, in guestLayouts, so there is no
+  // need to reset the whole list here and lose the operator's choices.
   const known = new Set(LAYOUTS.map(l => l.id));
   const kept = (merged.guestLayoutIDs || []).filter(id => known.has(id));
-  merged.guestLayoutIDs = kept.length === (merged.guestLayoutIDs || []).length && kept.length
-    ? kept
-    : DEFAULTS.guestLayoutIDs.slice();
+  merged.guestLayoutIDs = kept.length ? kept : DEFAULTS.guestLayoutIDs.slice();
 
   return merged;
+}
+
+/* Puts the editor's papers into MEDIA and its layouts into LAYOUTS, next to
+ * the built-in ones, so every other part of the booth treats them the same.
+ * Safe to call again after an edit: old copies of custom layouts go first. */
+function registerCustom(source){
+  for (const id of Object.keys(MEDIA)) if (MEDIA[id].custom) delete MEDIA[id];
+  for (const m of source.customMedia || []) {
+    if (!m || !m.id || !(m.w > 0) || !(m.dpi > 0)) continue;
+    MEDIA[m.id] = Object.assign({}, m, {custom: true, h: m.flow ? 0 : m.h});
+  }
+  for (let i = LAYOUTS.length - 1; i >= 0; i--) if (LAYOUTS[i].custom) LAYOUTS.splice(i, 1);
+  for (const l of source.customLayouts || []) {
+    if (!l || !l.id || !Array.isArray(l.elements)) continue;
+    LAYOUTS.push(registerCanvasLayout(
+      Object.assign({custom: true}, JSON.parse(JSON.stringify(l)))));
+  }
 }
 function saveSettings(){
   try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch {}
@@ -1035,9 +1460,15 @@ const currentMedia = () => MEDIA[settings.mediaID] || MEDIA['postcard-4x6'];
  * a double strip on a till roll are both nonsense, so the paper chosen in
  * Admin decides which half of the list a guest ever sees — one switch turns
  * the whole booth into a receipt printer. */
+/* Whether a layout belongs on this paper. A built-in one knows only whether
+ * it is a sheet or a receipt; a layout from the editor was designed against
+ * one particular paper and is only offered on that one. */
+const fitsPaper = (tpl, media) =>
+  tpl.kind === 'canvas' ? tpl.mediaID === media.id : !!tpl.receipt === !!media.flow;
+
 const guestLayouts = () => {
-  const flow = !!currentMedia().flow;
-  const pool = LAYOUTS.filter(l => !!l.receipt === flow);
+  const media = currentMedia();
+  const pool = LAYOUTS.filter(l => fitsPaper(l, media));
   const found = settings.guestLayoutIDs
     .map(id => pool.find(l => l.id === id))
     .filter(Boolean);
@@ -1047,7 +1478,7 @@ const guestLayouts = () => {
  * the last guest picked, which after a paper change can belong to the other
  * kind of output entirely. */
 const activeLayout = () =>
-  (!!session.layout.receipt === !!currentMedia().flow) ? session.layout : guestLayouts()[0];
+  fitsPaper(session.layout, currentMedia()) ? session.layout : guestLayouts()[0];
 
 /* The shot-order rows. One per frame, timed from the first shutter, so the
  * receipt lists what actually happened rather than invented durations. A
@@ -1093,6 +1524,7 @@ const branding = (tpl) => ({
 /* How big the paper is for a given layout. Fixed media answer from their own
  * dimensions; a roll only knows once the flow has been measured. */
 function sheetPixels(tpl, media){
+  if (tpl.kind === 'canvas') return canvasPixels(tpl, media);
   if (!media.flow) return mediaPixels(media);
   const w = Math.round(media.w * media.dpi);
   return {w, h: receiptPlan(tpl, branding(tpl), w, {}).height};
@@ -1369,6 +1801,7 @@ const TASK_LABELS = {
   thankyou: ['PHOTOBOOTH', 'DONE'],
   failed:   ['PHOTOBOOTH', 'ERROR'],
   admin:    ['CONTROL',    'OPERATOR'],
+  editor:   ['EDITOR',     'OPERATOR'],
 };
 
 function updateShotCount(){
@@ -1396,10 +1829,11 @@ function restartIdle(){
   clearTimeout(session.idleTimer);
   // The attract screen is the resting state; it does not time out, and the
   // operator console must not reset under someone who is typing in it.
-  if (session.step === 'attract' || session.step === 'admin') return;
+  if (session.step === 'attract' || session.step === 'admin' || session.step === 'editor') return;
   if (!settings.idleReturnSeconds) return;
   session.idleTimer = setTimeout(() => {
-    if (session.step !== 'attract' && session.step !== 'admin') abandon();
+    if (session.step !== 'attract' && session.step !== 'admin' &&
+        session.step !== 'editor') abandon();
   }, settings.idleReturnSeconds * 1000);
 }
 
@@ -1429,6 +1863,10 @@ function chooseLayout(tpl){
 }
 
 function abandon(){
+  // Back, Esc and the header arrow all land here. In the layout editor they
+  // mean "back to the console", and unsaved work must not vanish on a stray
+  // tap — the editor decides.
+  if (session.step === 'editor' && typeof editorBack === 'function') { editorBack(); return; }
   session.captureToken++;
   clearTimeout(session.idleTimer);
   clearTimeout(session.thankYouTimer);
@@ -1599,6 +2037,11 @@ function buildLayoutTiles(){
 
     const pv = document.createElement('div');
     pv.className = 'pv';
+    // Each tile takes its own layout's shape. Two designed receipts on the
+    // same roll can be different lengths, and one shared aspect would
+    // letterbox all but one of them.
+    const shape = sheetPixels(tpl, currentMedia());
+    tile.style.setProperty('--sheet-aspect', shape.w + ' / ' + shape.h);
     pv.appendChild(renderSheet([], tpl, currentMedia(), branding(tpl), 0.24,
                                {numberEmptySlots: true,
                                 mono: settings.photoTone !== 'colour'}));
@@ -1826,6 +2269,20 @@ function submitPrint(){
  * Only the Bluetooth path reports back — `nativePrintResult` below. The
  * system dialog is the guest handing over to Android, and there is no useful
  * answer to wait for. */
+/* The page a sheet goes out on. A roll's page is the paper's *full* width —
+ * 80 mm for a 72 mm image, 58 mm for a 48 mm one — with the image centred on
+ * the part the head reaches, and as long as the image is. Used to be a fixed
+ * 80 mm, which would have printed a 58 mm roll on an 80 mm page. */
+const rollPaperMM = media => media.paperW || Math.round(media.w * 25.4 + 8);
+
+function printPaperMils(media, sheet){
+  if (media.flow) {
+    return {w: Math.round(rollPaperMM(media) / 25.4 * 1000),
+            h: Math.round(sheet.height / media.dpi * 1000)};
+  }
+  return {w: Math.round(media.w * 1000), h: Math.round(media.h * 1000)};
+}
+
 function nativePrint(dataURL, media){
   const px = session.sheet;
   if (settings.printMode === 'thermal') {
@@ -1835,11 +2292,8 @@ function nativePrint(dataURL, media){
   }
   // Media sizes are in mils — thousandths of an inch. A roll has no page
   // height, so its length is whatever the receipt came out.
-  const widthMils  = Math.round((media.flow ? 80 / 25.4 : media.w) * 1000);
-  const heightMils = Math.round(media.flow
-    ? (px.height / media.dpi) * 1000
-    : media.h * 1000);
-  NATIVE.printSheet(dataURL, session.copies, widthMils, heightMils,
+  const page = printPaperMils(media, px);
+  NATIVE.printSheet(dataURL, session.copies, page.w, page.h,
                     'Photobooth ' + media.shortName);
   setBars('#print-bars', 1);
   finishPrinting();
@@ -1847,6 +2301,9 @@ function nativePrint(dataURL, media){
 
 /// Called by the Android shell when a Bluetooth job has finished or failed.
 function nativePrintResult(ok, message){
+  // A test print from the layout editor is not a guest's print: it must not
+  // advance the sheet counter or walk anyone to the thank-you screen.
+  if (typeof editorPrintResult === 'function' && editorPrintResult(ok, message)) return;
   if (!ok) { fail(message || 'The printer did not answer.'); return; }
   setBars('#print-bars', 1);
   finishPrinting();
@@ -1867,11 +2324,13 @@ function openPrintDialog(dataURL, media, copies, done){
   const doc = printFrame.contentDocument;
   doc.open();
   // A roll has no page height — `auto` lets the driver feed exactly as far as
-  // the receipt is long, and the 4mm either side centres 72mm of ink on 80mm
-  // of paper.
+  // the receipt is long — and the image is centred on the part of the paper
+  // the head reaches: 72 mm on 80, 48 mm on 58.
+  const inkMM = media.w * 25.4, paperMM = rollPaperMM(media);
   const page = media.flow
-    ? '@page{size:80mm auto;margin:0}' +
-      'img{display:block;width:72mm;height:auto;margin:0 4mm;' +
+    ? '@page{size:' + paperMM + 'mm auto;margin:0}' +
+      'img{display:block;width:' + inkMM.toFixed(2) + 'mm;height:auto;' +
+      'margin:0 ' + ((paperMM - inkMM) / 2).toFixed(2) + 'mm;' +
       'page-break-after:always;break-after:page}'
     : '@page{size:' + media.w + 'in ' + media.h + 'in;margin:0}' +
       'img{display:block;width:' + media.w + 'in;height:' + media.h + 'in;' +
@@ -2039,6 +2498,13 @@ async function renderAdmin(){
   }
   parts.push(section('PRINT', 'printer', printRows));
 
+  parts.push(section('LAYOUT EDITOR', 'star', [
+    row('YOUR LAYOUTS', '<div class="seg"><button class="on">' +
+      (settings.customLayouts || []).length + ' MADE</button></div>'),
+    row('', '<button class="btn solid" data-act="editor-open" style="min-width:260px">' +
+      '<span class="px" data-cell="4">OPEN EDITOR</span></button>'),
+    note('info', 'Design your own print for any paper: SELPHY postcard, L or card, a thermal roll, or a size you enter. Start from a built-in layout or a blank page, place photos, text, lines, boxes and a QR code, and test-print before offering it to guests.'),
+  ]));
   if (NATIVE) parts.push(usbCameraSection());
   if (NATIVE) parts.push(thermalSection());
 
@@ -2215,8 +2681,11 @@ const section = (title, icon, rows) =>
 const row = (label, control) =>
   '<div class="arow"><label>' + label + '</label>' + control + '</div>';
 
+/* More than a handful of choices becomes a grid rather than one long row: the
+ * paper list grew past what fits across a portrait tablet, and every paper
+ * the operator adds would have pushed more of it off the edge. */
 const seg = (key, options, current) =>
-  '<div class="seg">' + options.map(([value, label]) =>
+  '<div class="seg' + (options.length > 4 ? ' wrap' : '') + '">' + options.map(([value, label]) =>
     '<button data-set="' + key + '" data-value="' + String(value) + '"' +
     (String(value) === String(current) ? ' class="on"' : '') + '>' +
     escapeHTML(label) + '</button>').join('') + '</div>';
@@ -2386,7 +2855,14 @@ function countCornerTap(){
 
 document.addEventListener('keydown', e => {
   restartIdle();
-  if (e.key === 'Escape') { abandon(); return; }
+  // Keys typed into a field are text, not shortcuts. Without this, typing a
+  // capital A into the event name — "ANA & MIGUEL" — reopened the console
+  // mid-word and threw the cursor out of the field.
+  const t = e.target;
+  const typing = t && (t.isContentEditable ||
+    /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  if (e.key === 'Escape') { if (typing) t.blur(); abandon(); return; }
+  if (typing) return;
   if (e.key === ' ' && session.step === 'attract') { e.preventDefault(); begin(); }
   // Shift+A opens the console from anywhere, for testing without hunting the
   // corner. The passcode still applies.
@@ -2493,6 +2969,8 @@ go('attract');
 
 // Exposed for poking at the renderer from the console during testing.
 window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
+                layoutToCanvas, registerCustom, registerCanvasLayout, renderCanvas,
+                canvasPixels, sheetPixels, fitsPaper,
                 pixelTextCanvas, setPixel, compactStage, isStandalone,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job

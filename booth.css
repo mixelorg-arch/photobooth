@@ -329,6 +329,12 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
             text-transform:uppercase;color:var(--ink);cursor:pointer}
 .seg button:last-child{border-right:0}
 .seg button.on{background:var(--ink);color:var(--paper)}
+/* A long list of choices: tiles in a grid, each carrying its own rule so the
+   rows read as one ruled block. */
+.seg.wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+          flex:1;min-width:0;border-right:0;border-bottom:0}
+.seg.wrap button,.seg.wrap button:last-child{border-right:var(--rule-thin) solid var(--ink);
+          border-bottom:var(--rule-thin) solid var(--ink);padding:6px 10px}
 .afield{height:50px;padding:0 12px;border:var(--rule-thin) solid var(--ink);background:var(--paper);
         font-family:var(--mono);font-size:15px;color:var(--ink);flex:1;min-width:200px;
         -webkit-user-select:text;user-select:text}
@@ -486,6 +492,115 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 @media (max-width:700px) and (max-height:740px){
   .app.rollmedia .tilegrid{grid-auto-rows:260px}
   .app.rollmedia .sheetcol{height:31vh}
+}
+
+
+/* ==================================================================== *
+ * The layout editor.
+ *
+ * An operator tool, so it is denser than the guest screens — 44px targets,
+ * not 64 — but it speaks the same language: heavy rules, labelled modules,
+ * colour only as a fill. The page itself sits on the dark display panel, the
+ * way a print sits in the sheet wells.
+ * ==================================================================== */
+.ed{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:14px}
+.ed-bar{flex:none;display:flex;gap:10px;align-items:stretch}
+.ed-bar .btn{min-height:50px;padding:0 16px}
+.ed-pick{flex:1;min-width:0;height:50px;font-size:14px}
+.ed-notice{flex:none;padding:10px 12px;border:var(--rule-thin) solid var(--ink);
+           background:var(--lavender);font-family:var(--mono);font-size:13px;letter-spacing:.06em}
+.ed-notice[hidden]{display:none}
+
+.ed-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:12px}
+.ed-stagebox{min-height:0;min-width:0;display:flex;flex-direction:column;
+             border:var(--rule) solid var(--ink);background:var(--screen)}
+.ed-stage{flex:1;min-height:0;position:relative;display:grid;place-items:center;
+          overflow:hidden;touch-action:none}
+.ed-paper{position:relative;background:#FFFFFF;touch-action:none;cursor:default}
+.ed-paper canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* The selection: a lavender frame with square grab handles, big enough for a
+   finger. Handles are the only part of it that takes a touch. */
+.ed-sel{position:absolute;border:2px solid var(--lavender);outline:1px dashed var(--ink);
+        pointer-events:none}
+.ed-sel i{position:absolute;width:22px;height:22px;background:var(--paper);
+          border:3px solid var(--ink);pointer-events:auto;touch-action:none}
+.ed-sel .h-nw{left:-12px;top:-12px;cursor:nwse-resize}
+.ed-sel .h-ne{right:-12px;top:-12px;cursor:nesw-resize}
+.ed-sel .h-sw{left:-12px;bottom:-12px;cursor:nesw-resize}
+.ed-sel .h-se{right:-12px;bottom:-12px;cursor:nwse-resize}
+.ed-sel .h-w{left:-12px;top:50%;margin-top:-11px;cursor:ew-resize}
+.ed-sel .h-e{right:-12px;top:50%;margin-top:-11px;cursor:ew-resize}
+.ed-guide{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--salmon);
+          pointer-events:none}
+.ed-info{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;
+         background:var(--paper);border-top:var(--rule-thin) solid var(--ink);
+         font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+.ed-chip{height:34px;padding:0 10px;border:var(--rule-thin) solid var(--ink);background:var(--paper);
+         font-family:var(--mono);font-size:11px;letter-spacing:.1em;cursor:pointer}
+.ed-chip.on{background:var(--ink);color:var(--paper)}
+
+.ed-side{min-height:0;display:flex;flex-direction:column;border:var(--rule) solid var(--ink);
+         background:var(--paper)}
+.ed-tabs{flex:none;display:grid;grid-template-columns:repeat(4,1fr);
+         border-bottom:var(--rule) solid var(--ink)}
+.ed-tabs button{height:46px;border:0;border-right:var(--rule-thin) solid var(--ink);background:var(--paper);
+                font-family:var(--mono);font-size:12px;letter-spacing:.14em;cursor:pointer}
+.ed-tabs button:last-child{border-right:0}
+.ed-tabs button.on{background:var(--ink);color:var(--paper)}
+.ed-add{flex:none;display:flex;flex-wrap:wrap;gap:6px;padding:10px;
+        border-bottom:var(--rule-thin) solid var(--ink)}
+.ed-add button{height:38px;padding:0 10px;border:var(--rule-thin) solid var(--ink);background:var(--paper);
+               font-family:var(--mono);font-size:11px;letter-spacing:.08em;cursor:pointer}
+.ed-add button:active{background:var(--ink);color:var(--paper)}
+.ed-panel{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px;
+          display:flex;flex-direction:column;gap:10px}
+.ed-head{padding-top:6px;border-top:var(--rule-thin) solid var(--ink);margin-top:4px}
+.ed-panel>.ed-head:first-child{border-top:0;margin-top:0;padding-top:0}
+.ed-field{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;align-items:center}
+.ed-field>label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--dim);
+                text-transform:uppercase}
+.ed-ctl{min-width:0}
+.ed-row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ed-row2 .ed-field{grid-template-columns:62px minmax(0,1fr)}
+.ed-input{height:44px;width:100%;min-width:0;font-size:14px}
+.ed-area{width:100%;min-height:96px;padding:10px;font-size:14px;line-height:1.5;resize:vertical}
+.ed-code{min-height:110px;font-size:11px;word-break:break-all}
+.ed-numwrap{display:flex;align-items:center;gap:6px}
+.ed-num{flex:1}
+.ed-unit{font-family:var(--mono);font-size:12px;color:var(--dim);width:24px}
+.ed-seg{flex-wrap:wrap}
+.ed-seg button{min-height:40px;padding:0 10px;font-size:11px}
+.ed-swatches{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ed-sw{width:34px;height:34px;border:var(--rule-thin) solid var(--ink);cursor:pointer;padding:0}
+.ed-sw.on{outline:3px solid var(--ink);outline-offset:2px}
+.ed-pickcol{width:44px;height:36px;border:var(--rule-thin) solid var(--ink);padding:0;background:none}
+.ed-tokens{display:flex;flex-wrap:wrap;gap:6px}
+.ed-tokens button{height:34px;padding:0 8px;border:var(--rule-thin) dashed var(--ink);background:var(--paper);
+                  font-family:var(--mono);font-size:11px;cursor:pointer}
+.ed-btn{min-height:44px;width:100%;font-family:var(--mono);font-size:12px;letter-spacing:.1em}
+.ed-layers{display:flex;flex-direction:column;border:var(--rule-thin) solid var(--ink)}
+.ed-layer{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;
+          border-bottom:var(--rule-thin) dashed var(--ink);background:var(--paper);text-align:left;
+          font-family:var(--mono);font-size:12px;cursor:pointer}
+.ed-layer:last-child{border-bottom:0}
+.ed-layer b{flex:none;min-width:84px;font-weight:700;letter-spacing:.08em}
+.ed-layer span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+.ed-layer.on{background:var(--lavender)}
+.ed-layer.on span{color:var(--ink)}
+.ed-static{cursor:default}
+.ed-x{flex:none;height:32px;padding:0 8px;border:var(--rule-thin) solid var(--ink);background:var(--salmon);
+      font-family:var(--mono);font-size:11px;cursor:pointer}
+
+/* A tablet stood upright, or a phone: the page above, the controls below. */
+@media (orientation: portrait){
+  .ed-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,52fr) minmax(0,48fr)}
+}
+@media (max-width: 700px){
+  .ed{padding:8px;gap:8px}
+  .ed-bar{flex-wrap:wrap}
+  .ed-pick{flex:1 0 100%}
+  .ed-bar .btn{flex:1;padding:0 8px}
+  .ed-field{grid-template-columns:86px minmax(0,1fr)}
 }
 
 
