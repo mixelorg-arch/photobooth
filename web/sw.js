@@ -1,13 +1,13 @@
 /* Offline cache for the booth.
  *
  * Venues lose wifi. Once the app has been opened on the device it must keep
- * working with no network at all — the whole thing is five files and some
+ * working with no network at all — the whole thing is six files and some
  * icons, so it is cached outright rather than cleverly.
  *
  * Bump CACHE on every deploy: the old cache is deleted on activate, which is
  * what stops a home-screen icon serving last week's build forever.
  */
-const CACHE = 'photobooth-v11';
+const CACHE = 'photobooth-v12';
 
 const SHELL = [
   './',
@@ -15,6 +15,7 @@ const SHELL = [
   './booth.css',
   './booth.js',
   './qr.js',
+  './editor.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
   './icons/icon-192.png',
