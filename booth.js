@@ -1361,6 +1361,25 @@ const IPADOS = (() => {
   return /Macintosh/.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document;
 })();
 
+/* Whether to hold the camera open between guests instead of releasing it.
+ *
+ * No web page anywhere can grant itself the camera — that is a browser
+ * boundary, not a gap to code around. What can be controlled is how often the
+ * booth *asks*. iOS does not persist the decision for a Home Screen web app:
+ * it is thrown away when the app closes, and asked for again the next time
+ * anything calls getUserMedia. Releasing the camera at the end of a session
+ * therefore puts a permission prompt in front of every single guest.
+ *
+ * Taking the camera once and never letting go is the documented way round it,
+ * and the only one. So on iPadOS the stream is held for the whole life of the
+ * launch: one prompt when the booth starts, then nothing. The operator
+ * changing camera is the only thing that drops it.
+ *
+ * Nowhere else does this: a WebView and a desktop browser both remember the
+ * grant, so holding a lens open between guests would cost a live camera and
+ * buy nothing. */
+const HOLD_CAMERA = IPADOS;
+
 /* ==================================================================== *
  * Settings — the same shape as AppSettings.swift, in localStorage.
  * Saved values are merged over the defaults rather than replacing them,
@@ -1662,6 +1681,59 @@ function activeCameraId(){
 /// lie about which camera is open — a resolution cannot. The Charmera is a
 /// VGA-class webcam, so 640x480 on a tablet whose own lens does 1080p is the
 /// plainest confirmation that the right camera is in use.
+/// True when the booth is holding a live camera, which on iOS also means the
+/// one permission prompt of this launch has been answered.
+function cameraHeld(){
+  if (uvc.running) return true;
+  return !!(stream && stream.getVideoTracks().some(t => t.readyState === 'live'));
+}
+
+/* Take the camera again if it has been dropped underneath us.
+ *
+ * iOS ends the tracks of a web app that has been in the background, and an
+ * ended track is not an error — it is a black preview and a countdown that
+ * photographs nothing. Since the stream object survives, the only reliable
+ * test is the track's own readyState. Returns whether it had to act.
+ */
+async function recoverCameraIfDropped(){
+  if (cameraHeld()) return false;
+  stopCamera();
+  try { await startCamera(); } catch {}
+  return true;
+}
+
+function cameraHoldState(){
+  if (!HOLD_CAMERA) return cameraHeld() ? 'OPEN' : 'NOT OPEN';
+  return cameraHeld() ? 'HELD FOR THIS LAUNCH' : 'NOT GRANTED YET';
+}
+
+/* What to say about camera permission on iOS, where it is the thing most
+ * likely to go wrong in front of a queue and the thing least fixable in code.
+ */
+function permissionNote(){
+  const held = cameraHeld();
+  const home = isStandalone();
+  if (!held) {
+    return 'The booth does not have the camera yet. Press LOOK AGAIN and ' +
+           'allow it. No web page can grant itself a camera — iOS asks, and ' +
+           'only the person holding the iPad can answer.' +
+           (home ? ' Do it now, before the queue starts.' : '');
+  }
+  if (home) {
+    return 'The camera is held for as long as this app stays open, so no guest ' +
+           'will be asked. iOS throws the answer away when the app is closed, ' +
+           'and gives no way to remember it, so expect exactly one prompt each ' +
+           'time the booth is launched — answer it yourself at setup and it ' +
+           'will not come back. Do not close the app between guests. To be rid ' +
+           'of the prompt entirely, open the booth in Safari instead of from ' +
+           'the Home Screen and set Settings › Safari › Camera to Allow; that ' +
+           'setting is remembered, at the cost of the address bar.';
+  }
+  return 'The camera is held for as long as this tab stays open, so no guest ' +
+         'will be asked. Set Settings › Safari › Camera to Allow to have the ' +
+         'answer remembered across launches.';
+}
+
 function feedDescription(){
   if (uvc.running) {
     const w = uvcImage.naturalWidth || uvc.width, h = uvcImage.naturalHeight || uvc.height;
@@ -1782,16 +1854,27 @@ function stopCamera(){
  * again, then reopening on whatever AUTO now prefers, is the whole fix.
  */
 async function rescanCameras(){
-  stopCamera();
-  // Ask for the grant with the plainest possible request. Anything narrower
-  // can fail for a reason that has nothing to do with permission.
-  try {
-    const probe = await navigator.mediaDevices.getUserMedia({audio: false, video: true});
-    probe.getTracks().forEach(t => t.stop());
-  } catch (err) {
-    showCamError(cameraMessage(err));
+  // No camera yet: take one. Asking is also what makes Safari reveal device
+  // names at all, and on iPadOS list a USB camera at all, so this is the step
+  // that turns an empty SEEN row into a useful one.
+  if (!stream) { await startCamera(); renderAdmin(); return; }
+
+  // A page already holding a camera already holds the grant, and on iOS
+  // letting go to look again would buy a second prompt for nothing. Look
+  // while still holding.
+  const want = settings.cameraId || 'auto';
+  if (want === 'auto') {
+    // Opens the better camera before dropping the current one, so the grant
+    // is never released in between.
+    await upgradeToExternalCamera();
+  } else {
+    const cams = await listCameras();
+    const pinned = cams.find(c => c.deviceId === want);
+    if (pinned && pinned.deviceId !== activeCameraId()) {
+      stopCamera();
+      await startCamera();
+    }
   }
-  await startCamera();
   renderAdmin();
 }
 
@@ -1801,6 +1884,7 @@ async function rescanCameras(){
  * out from under a countdown is worse than finishing on the built-in one. */
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', () => {
+    if (HOLD_CAMERA) return;   // dropping it here would cost a fresh prompt
     if (session.step === 'attract' || session.step === 'admin') stopCamera();
   });
 }
@@ -1939,7 +2023,9 @@ function abandon(){
   session.marks.clear();
   session.sheet = null;
   session.copies = settings.defaultCopies;
-  stopCamera();
+  // Holding the camera is what keeps the permission prompt off the next
+  // guest's face. See HOLD_CAMERA.
+  if (!HOLD_CAMERA) stopCamera();
   go('attract');
 }
 
@@ -2608,6 +2694,10 @@ async function renderAdmin(){
     // fire devicechange when one is plugged in. So: a button.
     camRows.push(row('USB CAMERA', '<div class="seg">' +
         '<button data-act="camera-rescan">LOOK AGAIN</button></div>'));
+    // Whether the one prompt iOS allows has been answered yet. HELD is the
+    // state a booth should be left in before the doors open.
+    camRows.push(row('ACCESS', '<div class="seg"><button class="on">' +
+        escapeHTML(cameraHoldState()) + '</button></div>'));
   }
 
   camRows.push(
@@ -2618,6 +2708,8 @@ async function renderAdmin(){
       ? 'AUTO is using the plugged-in camera: ' + external.label + '. Unplug it and the booth falls back to the built-in lens on the next session.'
       : usbCameraNote(cams)),
     note('info', 'The preview is mirrored so people can pose. The saved photo never is — a mirrored print reverses every logo in the room.'));
+  if (HOLD_CAMERA) camRows.splice(camRows.length - 1, 0, note(
+    cameraHeld() ? 'info' : 'warn', permissionNote()));
   parts.push(section('CAMERA', 'camera', camRows));
 
   const silent = silentPrintingLikely();
@@ -2925,7 +3017,13 @@ function wireAdmin(root){
 
 function afterSettingChange(key){
   if (key === 'mirrorPreview') applyMirror();
-  if (key === 'cameraId') stopCamera();
+  if (key === 'cameraId') {
+    // Reopen at once rather than waiting for the next guest: whatever asking
+    // costs — a permission prompt on iOS — is owed by the operator standing
+    // at the console, not by the person who taps START next.
+    stopCamera();
+    startCamera().then(renderAdmin);
+  }
   if (key === 'quickPrint') saveSettings();
   if (key === 'maxCopies') session.copies = Math.min(session.copies, settings.maxCopies);
   // Anything that changes how a sheet looks re-renders the tiles, so the
@@ -3142,6 +3240,28 @@ tickClock();
 setInterval(tickClock, 20000);
 go('attract');
 
+/* Take the camera at launch on iPadOS.
+ *
+ * iOS insists on one permission prompt per launch of a Home Screen web app
+ * and there is no way to be rid of it. There is a way to choose who sees it:
+ * asking now means it lands on whoever is setting the booth up, seconds after
+ * they tap the icon, instead of on the first guest in the queue while the
+ * layout screen sits there waiting.
+ *
+ * Failure is ignored on purpose. The attract screen shows no preview, so
+ * there is nothing to report to nobody; if the grant is refused or the ask is
+ * suppressed, the first session asks again as it always did.
+ */
+if (HOLD_CAMERA) {
+  startCamera().catch(() => {});
+  // A booth that has been backgrounded — a notification, a Guided Access
+  // fumble — comes back with its tracks ended. Take the camera again on the
+  // way in rather than letting the next guest find a black preview.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') recoverCameraIfDropped();
+  });
+}
+
 // Exposed for poking at the renderer from the console during testing.
 window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 layoutToCanvas, registerCustom, registerCanvasLayout, renderCanvas,
@@ -3150,7 +3270,9 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 // Camera and print plumbing, exported so a test can reach it:
                 // the iPad route through these cannot be exercised by hand
                 // from this machine.
-                IPADOS, isExternalCamera, listCameras, feedDescription,
+                IPADOS, HOLD_CAMERA, isExternalCamera, listCameras,
+                feedDescription, cameraHeld, cameraHoldState, permissionNote,
+                recoverCameraIfDropped,
                 printPageCSS, printFromDocument, rescanCameras,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
