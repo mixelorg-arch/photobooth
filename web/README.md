@@ -47,6 +47,51 @@ Home Screen icon will keep serving the old build.
 **Lock it down** with Settings → Accessibility → **Guided Access**, then
 triple-click the side button on the attract screen.
 
+## Sticker and waybill printers
+
+Two label papers are built in, under **Admin → PRINT → PAPER**:
+
+| Paper | Size | Renders |
+|---|---|---|
+| `100 x 150 mm Label (waybill sticker)` | 100 x 150 mm | 799 x 1199 dots |
+| `A6 Label 105 x 148 mm (sticker)` | 105 x 148 mm | 839 x 1183 dots |
+
+Both are 203 dpi, which is the resolution of every 4-inch thermal head, so
+the render lands on the sticker at 1:1. They are **sheets, not rolls**: a
+label printer feeds to the gap between stickers and stops, so these get the
+ordinary six photo layouts rather than the three receipt ones.
+
+**"A6" is sold loosely.** The stickers bundled with these printers are usually
+100 x 150 mm; true A6 is 105 x 148. Measure one before an event — a 5 mm error
+shows as a crooked edge on every print. Any other size can be added under
+LAYOUT EDITOR.
+
+Prefer **100 x 150** if the stock is a choice. A 4-inch head is 104 mm, or 832
+dots, so 100 x 150 fits with room to spare while true A6 is 839 — seven dots
+wider than the head can reach, which the driver scales away. Admin warns when
+the selected paper is wider than HEAD WIDTH, which also catches the older
+mistake of an 80 mm roll on a 58 mm head.
+
+**PHOTO TONE is ignored on thermal paper.** The head has one ink and two
+states, so a colour preview would be a picture the printer cannot produce.
+Thermal papers — both rolls and both labels — always render monochrome,
+whatever PHOTO TONE says. The preview is then honest about what will burn.
+
+**Getting the sheet to the printer is the hard part**, and the answer differs
+by route:
+
+* **Android, PRINT MODE = BLUETOOTH.** The booth dithers to 1 bit and sends
+  ESC/POS raster. Many waybill printers understand that; the ones that only
+  speak TSPL or CPCL will answer and print nothing, or feed blank stickers.
+  Set HEAD WIDTH to `104MM / 832`. **Test-print from the layout editor before
+  an event**, not in front of a queue.
+* **Android, PRINT MODE = SYSTEM DIALOG.** Goes through the printer's own
+  Android driver, which is the fallback when ESC/POS comes out blank.
+* **iPad or a browser.** Prints through the system print dialog, so the
+  printer has to be one the device can already see — AirPrint, Mopria, or a
+  driver that is installed. A USB or Bluetooth-only waybill printer is usually
+  none of those and simply will not appear in the list.
+
 ## Camera permission on an iPad
 
 **No web page can grant itself a camera.** That is a browser boundary, not a

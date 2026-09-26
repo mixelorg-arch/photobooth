@@ -198,13 +198,35 @@ const MEDIA = {
                    shortName:'CARD SELPHY',  w:54/25.4,  h:86/25.4,  dpi:300},
   /* 58mm roll: 48mm printable, 384 dots — the pocket-printer width. */
   'thermal-58':   {id:'thermal-58',   name:'58mm Thermal Roll (receipt)',
-                   shortName:'58MM ROLL',    w:384/203, h:0,   dpi:203, flow:true, paperW:58},
+                   shortName:'58MM ROLL',    w:384/203, h:0,   dpi:203, flow:true, paperW:58,
+                   thermal:true},
   /* An 80mm thermal roll. 72mm of that is printable on every common head,
    * and at 203dpi that is 576 dots — the width nearly every ESC/POS printer
    * expects. Height is not a paper size at all: a receipt is as long as its
    * content, so `flow` tells the renderer to measure instead of fit. */
   'thermal-80':   {id:'thermal-80',   name:'80mm Thermal Roll (receipt)',
-                   shortName:'80MM ROLL',    w:576/203, h:0,   dpi:203, flow:true, paperW:80},
+                   shortName:'80MM ROLL',    w:576/203, h:0,   dpi:203, flow:true, paperW:80,
+                   thermal:true},
+  /* Waybill stickers, for a 4-inch thermal label printer such as the VOZY U9.
+   *
+   * A label is a page, not a roll. The printer feeds to the gap between
+   * stickers and stops, so unlike the receipt rolls above these are fixed
+   * sheets and get the ordinary sheet layouts. 203 dpi is the head's own
+   * resolution, so the render lands on the paper at 1:1.
+   *
+   * Two sizes, because "A6" is sold loosely. The stickers bundled with these
+   * printers are usually 100 x 150 mm; true A6 is 105 x 148 mm. Measure one
+   * and pick the match — a 5 mm error shows as a crooked edge on every print.
+   * Any other size can be added under LAYOUT EDITOR.
+   *
+   * 100 x 150 is 799 dots and fits a 4-inch head (832 dots of 104 mm) with
+   * room to spare. True A6 is 839, a hair wider than the head can reach, so
+   * that last 0.9 mm is scaled away by the driver. It is not visible, but it
+   * is why 100 x 150 is the better of the two if the stock is a choice. */
+  'label-100x150':{id:'label-100x150',name:'100 x 150 mm Label (waybill sticker)',
+                   shortName:'100X150 LABEL', w:100/25.4, h:150/25.4, dpi:203, thermal:true},
+  'label-a6':     {id:'label-a6',     name:'A6 Label 105 x 148 mm (sticker)',
+                   shortName:'A6 LABEL',      w:105/25.4, h:148/25.4, dpi:203, thermal:true},
 };
 const mediaPixels = m => ({w: Math.round(m.w * m.dpi), h: Math.round(m.h * m.dpi)});
 
@@ -2166,9 +2188,12 @@ function buildShotStrip(){
 }
 
 function compose(){
-  session.sheet = renderSheet(session.photos, session.layout,
-                              currentMedia(), branding(session.layout), 1,
-                              {mono: settings.photoTone !== 'colour'});
+  const media = currentMedia();
+  // A thermal head has one ink and two states. COLOUR on thermal paper would
+  // show the guest a preview the printer cannot produce, so the paper wins.
+  session.sheet = renderSheet(session.photos, session.layout, media,
+                              branding(session.layout), 1,
+                              {mono: media.thermal || settings.photoTone !== 'colour'});
 }
 
 /* ==================================================================== *
@@ -2738,6 +2763,18 @@ async function renderAdmin(){
       ? 'Silent: pressing PRINT sends the sheet straight to the default printer, no window. Make the SELPHY the default printer and set its paper to borderless 4x6 — Chrome uses those defaults and asks nothing.'
       : 'A print dialog will appear. To print silently, quit Chrome and run ./kiosk-chrome.sh — it relaunches Chrome with --kiosk-printing, which is the only way a browser can print without a window. Safari cannot do it at all.'));
   }
+  // A sticker printer reached from a browser is a different problem from one
+  // reached over Bluetooth, and the answer is not the same.
+  if (currentMedia().thermal && !currentMedia().flow && !NATIVE) {
+    printRows.push(note('warn',
+      'Label paper is selected. This route prints through the system print ' +
+      'dialog, so the printer has to be one the device itself can see — an ' +
+      'AirPrint or Mopria printer, or one whose own driver is installed. A ' +
+      'USB or Bluetooth-only waybill printer is usually neither, and will not ' +
+      'be in the list. Reaching one of those means the Android build and ' +
+      'PRINT MODE set to BLUETOOTH, or printing from a computer that has the ' +
+      'printer\u2019s driver.'));
+  }
   parts.push(section('PRINT', 'printer', printRows));
 
   parts.push(section('LAYOUT EDITOR', 'star', [
@@ -2757,6 +2794,9 @@ async function renderAdmin(){
     row('PRINT DATE', seg('printDate', [[true, 'ON'], [false, 'OFF']], settings.printDate)),
     row('PHOTO TONE', seg('photoTone', [['mono', 'MONO'], ['colour', 'COLOUR']], settings.photoTone)),
     row('SHEET NO.', num('sheetCounter', 1, 999, 1, '')),
+    note(currentMedia().thermal ? 'warn' : 'info', currentMedia().thermal
+      ? 'PHOTO TONE is ignored on thermal paper: the head has one ink and two states, so every photo is printed monochrome whatever this says. The preview shows what will actually burn.'
+      : 'PHOTO TONE picks whether photographs print in colour or monochrome.'),
     note('info', 'DISPLAY WORD is the oversized word on the sheet — a long one runs off the edge on purpose, and on a receipt it is the script line under the event name. Leave it empty to use the event name. SHEET NO. prints as "003." and counts up with every print.'),
   ]));
 
@@ -2849,12 +2889,44 @@ function thermalSection(){
     rows.push(row('PRINTER',
       '<div class="seg"><button class="on">NONE PAIRED</button></div>'));
   }
+  // 832 is the head of every 4-inch label printer at 203 dpi — 104 mm of
+  // dots — which is the class the waybill papers above are cut for.
   rows.push(row('HEAD WIDTH', seg('thermalWidthDots',
-    [[576, '80MM / 576'], [384, '58MM / 384']], settings.thermalWidthDots)));
+    [[832, '104MM / 832'], [576, '80MM / 576'], [384, '58MM / 384']],
+    settings.thermalWidthDots)));
   rows.push(note(devices.length ? 'info' : 'warn', devices.length
-    ? 'Paired Bluetooth devices. Pick the receipt printer, set HEAD WIDTH to match it, and set PAPER above to the 80mm roll. The sheet is dithered to 1 bit here, so what you see on the confirm screen is what burns.'
+    ? 'Paired Bluetooth devices. Pick the printer, set HEAD WIDTH to match it, and set PAPER above to the paper actually loaded. The sheet is dithered to 1 bit here, so what you see on the confirm screen is what burns.'
     : 'No paired Bluetooth devices. Pair the printer in Android Settings › Connected devices first, then come back — the booth never scans for radios in front of a guest.'));
+  // Paper wider than the head is not an error anywhere — it is a silent clip
+  // or a silent shrink. Catching it here costs one comparison.
+  const paperDots = mediaPixels(currentMedia()).w;
+  const headDots = settings.thermalWidthDots | 0;
+  if (paperDots > headDots) {
+    rows.push(note('warn',
+      currentMedia().shortName + ' renders ' + paperDots + ' dots wide but HEAD ' +
+      'WIDTH is set to ' + headDots + '. The extra ' + (paperDots - headDots) +
+      ' will be scaled or cut off. Raise HEAD WIDTH to match the printer, or ' +
+      'pick a narrower paper.'));
+  }
+  if (currentMedia().thermal && !currentMedia().flow) rows.push(note('warn', labelPrinterNote()));
   return section('BLUETOOTH PRINTER', 'printer', rows);
+}
+
+/* What a sticker printer needs, said once and in one place.
+ *
+ * These printers are cheap, common and not standardised. Two things decide
+ * whether one prints: the language it speaks, and how it is reached. The
+ * booth can only be honest about both.
+ */
+function labelPrinterNote(){
+  return 'Label paper is selected. Bluetooth here speaks ESC/POS raster, ' +
+         'which many waybill printers understand and some do not — the ones ' +
+         'that only speak TSPL or CPCL will answer and print nothing, or feed ' +
+         'blank stickers. Test-print one from the layout editor before an ' +
+         'event rather than finding out in front of a queue. If it comes out ' +
+         'blank, switch PRINT MODE to SYSTEM DIALOG and print through the ' +
+         'printer\u2019s own Android driver instead. Set HEAD WIDTH to 104MM / 832 ' +
+         'for a 4-inch head.';
 }
 
 /* What is actually on the USB port, as the operator console reads it. */
