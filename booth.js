@@ -1351,6 +1351,16 @@ function dateStamp(d){
  * ==================================================================== */
 const NATIVE = (typeof window !== 'undefined' && window.BoothNative) || null;
 
+/* iPadOS is the one browser platform that hands a web page a USB camera, so
+ * the advice when a camera will not appear is different there than on a
+ * laptop. iPadOS 13+ reports itself as a Macintosh, so the user-agent alone
+ * cannot tell an iPad from a Mac — a touch screen is what separates them. */
+const IPADOS = (() => {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  if (/iPad/.test(ua)) return true;
+  return /Macintosh/.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document;
+})();
+
 /* ==================================================================== *
  * Settings — the same shape as AppSettings.swift, in localStorage.
  * Saved values are merged over the defaults rather than replacing them,
@@ -1606,10 +1616,22 @@ const EXTERNAL_CAMERA = /charmera|kodak|uvc|usb|external|webcam|capture|hdmi/i;
  * "Front Camera". A built-in lens that happens to mention USB in its name —
  * some tablets do — must not be mistaken for the one someone plugged in, so
  * a stated facing direction disqualifies it. */
-const BUILT_IN_CAMERA = /facing (front|back)|front camera|back camera|built-?in/i;
+const BUILT_IN_CAMERA = /facing (front|back)|\b(front|back|rear|desk view)\b|built-?in/i;
 
-const isExternalCamera = label =>
-  EXTERNAL_CAMERA.test(label || '') && !BUILT_IN_CAMERA.test(label || '');
+/// Takes a camera from `listCameras`, not a bare label: a camera whose name
+/// the browser has not revealed yet gets a placeholder, and a placeholder is
+/// no evidence either way.
+function isExternalCamera(cam){
+  if (!cam || !cam.named) return false;
+  const label = cam.label || '';
+  if (BUILT_IN_CAMERA.test(label)) return false;
+  /* iPadOS names its own lenses Front Camera, Back Camera and Desk View
+   * Camera, and nothing else — so on an iPad whatever is left over is
+   * something plugged in. That catches USB cameras whose product name says
+   * nothing about being a webcam, which the keyword list below cannot. */
+  if (IPADOS) return true;
+  return EXTERNAL_CAMERA.test(label);
+}
 
 /// The constraint to open with, given what is plugged in right now.
 async function resolveCamera(){
@@ -1624,7 +1646,7 @@ async function resolveCamera(){
   }
   if (want === 'builtin') return {facingMode: 'user'};
 
-  const external = cams.find(c => isExternalCamera(c.label));
+  const external = cams.find(c => isExternalCamera(c));
   return external ? {deviceId: {exact: external.deviceId}} : {facingMode: 'user'};
 }
 
@@ -1636,6 +1658,24 @@ function activeCameraId(){
   return track.getSettings().deviceId || '';
 }
 
+/// The size and rate of the picture actually arriving, for Admin. A label can
+/// lie about which camera is open — a resolution cannot. The Charmera is a
+/// VGA-class webcam, so 640x480 on a tablet whose own lens does 1080p is the
+/// plainest confirmation that the right camera is in use.
+function feedDescription(){
+  if (uvc.running) {
+    const w = uvcImage.naturalWidth || uvc.width, h = uvcImage.naturalHeight || uvc.height;
+    return w && h ? w + 'x' + h + ' USB' : 'USB, NO FRAME YET';
+  }
+  if (!stream) return 'NOT OPEN';
+  const track = stream.getVideoTracks()[0];
+  if (!track) return 'NO VIDEO TRACK';
+  const set = track.getSettings ? track.getSettings() : {};
+  const w = set.width || video.videoWidth, h = set.height || video.videoHeight;
+  if (!w || !h) return 'OPEN, NO FRAME YET';
+  return w + 'x' + h + (set.frameRate ? ' ' + Math.round(set.frameRate) + 'fps' : '');
+}
+
 /* `enumerateDevices` hands back blank labels until the page holds a camera
  * grant, so the very first open of a fresh install cannot tell a USB camera
  * from the built-in one and lands on the built-in. Once a stream exists the
@@ -1644,7 +1684,7 @@ function activeCameraId(){
 async function upgradeToExternalCamera(){
   if ((settings.cameraId || 'auto') !== 'auto') return;
   const cams = await listCameras();
-  const external = cams.find(c => isExternalCamera(c.label));
+  const external = cams.find(c => isExternalCamera(c));
   if (!external || external.deviceId === activeCameraId()) return;
   try {
     const better = await navigator.mediaDevices.getUserMedia({
@@ -1729,6 +1769,30 @@ function stopCamera(){
   stream.getTracks().forEach(t => t.stop());
   stream = null;
   video.srcObject = null;
+}
+
+/* Plug a camera in and look for it again, from Admin.
+ *
+ * This exists because of two things Safari does. It hands back blank labels,
+ * and on iPadOS will not list a USB camera at all, until the page holds a
+ * camera grant — so the first look of a fresh install always lands on the
+ * built-in lens. And it does not reliably fire `devicechange` when something
+ * is plugged into the USB-C port, so the listener below never runs. Opening a
+ * stream (which asks for the grant if it does not have one), then listing
+ * again, then reopening on whatever AUTO now prefers, is the whole fix.
+ */
+async function rescanCameras(){
+  stopCamera();
+  // Ask for the grant with the plainest possible request. Anything narrower
+  // can fail for a reason that has nothing to do with permission.
+  try {
+    const probe = await navigator.mediaDevices.getUserMedia({audio: false, video: true});
+    probe.getTracks().forEach(t => t.stop());
+  } catch (err) {
+    showCamError(cameraMessage(err));
+  }
+  await startCamera();
+  renderAdmin();
 }
 
 /* Someone plugs the camera in while the booth is sitting on the attract
@@ -2309,8 +2373,28 @@ function nativePrintResult(ok, message){
   finishPrinting();
 }
 
+/* The @page and image rules for one sheet, shared by both routes below.
+ *
+ * A roll has no page height — `auto` lets the driver feed exactly as far as
+ * the receipt is long — and the image is centred on the part of the paper the
+ * head reaches: 72 mm on 80, 48 mm on 58. */
+function printPageCSS(media){
+  const inkMM = media.w * 25.4, paperMM = rollPaperMM(media);
+  return media.flow
+    ? '@page{size:' + paperMM + 'mm auto;margin:0}' +
+      'img{display:block;width:' + inkMM.toFixed(2) + 'mm;height:auto;' +
+      'margin:0 ' + ((paperMM - inkMM) / 2).toFixed(2) + 'mm;' +
+      'page-break-after:always;break-after:page}'
+    : '@page{size:' + media.w + 'in ' + media.h + 'in;margin:0}' +
+      'img{display:block;width:' + media.w + 'in;height:' + media.h + 'in;' +
+      'object-fit:cover;page-break-after:always;break-after:page}';
+}
+
 let printFrame = null;
 function openPrintDialog(dataURL, media, copies, done){
+  // iOS and iPadOS ignore `print()` called on an iframe, so the sheet has to
+  // be printed from the page itself there. See printFromDocument.
+  if (IPADOS) { printFromDocument(dataURL, media, copies, done); return; }
   // A hidden iframe rather than window.open: no popup blocker, and the job
   // cannot be orphaned in a background tab.
   if (printFrame) printFrame.remove();
@@ -2323,18 +2407,7 @@ function openPrintDialog(dataURL, media, copies, done){
                            () => '<img src="' + dataURL + '">').join('');
   const doc = printFrame.contentDocument;
   doc.open();
-  // A roll has no page height — `auto` lets the driver feed exactly as far as
-  // the receipt is long — and the image is centred on the part of the paper
-  // the head reaches: 72 mm on 80, 48 mm on 58.
-  const inkMM = media.w * 25.4, paperMM = rollPaperMM(media);
-  const page = media.flow
-    ? '@page{size:' + paperMM + 'mm auto;margin:0}' +
-      'img{display:block;width:' + inkMM.toFixed(2) + 'mm;height:auto;' +
-      'margin:0 ' + ((paperMM - inkMM) / 2).toFixed(2) + 'mm;' +
-      'page-break-after:always;break-after:page}'
-    : '@page{size:' + media.w + 'in ' + media.h + 'in;margin:0}' +
-      'img{display:block;width:' + media.w + 'in;height:' + media.h + 'in;' +
-      'object-fit:cover;page-break-after:always;break-after:page}';
+  const page = printPageCSS(media);
   doc.write(
     '<!doctype html><meta charset="utf-8"><title>Photobooth print</title><style>' +
     'html,body{margin:0;padding:0;background:#fff}' + page +
@@ -2349,6 +2422,63 @@ function openPrintDialog(dataURL, media, copies, done){
     if (--pending > 0) return;
     printFrame.contentWindow.focus();
     printFrame.contentWindow.print();
+    done();
+  };
+  if (!imgs.length) { done(); return; }
+  imgs.forEach(img => {
+    if (img.complete) ready();
+    else { img.onload = ready; img.onerror = ready; }
+  });
+}
+
+/* Printing on iPadOS.
+ *
+ * Safari on iPhone and iPad does nothing at all when `print()` is called on an
+ * iframe — the AirPrint sheet only comes up for the top-level window. So the
+ * sheet is put into the page itself, inside a block that is hidden on screen
+ * and is the only thing visible on paper, and the page is printed.
+ *
+ * The block is left in the DOM afterwards rather than cleaned up on a timer.
+ * `print()` on iOS returns before the AirPrint sheet has finished with the
+ * document, so removing the images is a race that loses by printing blanks;
+ * the next print replaces them instead. Hidden and inert, they cost nothing.
+ */
+let printout = null;
+function printFromDocument(dataURL, media, copies, done){
+  if (!printout) {
+    printout = document.createElement('div');
+    printout.id = 'printout';
+    printout.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(printout);
+  }
+  let style = el('#print-css');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'print-css';
+    document.head.appendChild(style);
+  }
+  // `#printout` is display:none on screen, and on paper it is the only thing
+  // that is not. Guarding on the id rather than a class means nothing the app
+  // adds to the body later can leak into a print.
+  style.textContent =
+    '#printout{display:none}' +
+    '@media print{' +
+      'html,body{margin:0;padding:0;background:#fff}' +
+      'body>*{display:none!important}' +
+      '#printout{display:block!important}' +
+      printPageCSS(media).replace(/\bimg\{/, '#printout img{') +
+      '#printout img:last-child{page-break-after:auto;break-after:auto}' +
+    '}';
+
+  printout.innerHTML = Array.from({length: Math.max(1, copies)},
+                                  () => '<img src="' + dataURL + '">').join('');
+
+  // Every page has to be decoded before print() or the preview shows blanks.
+  const imgs = [...printout.querySelectorAll('img')];
+  let pending = imgs.length;
+  const ready = () => {
+    if (--pending > 0) return;
+    window.print();
     done();
   };
   if (!imgs.length) { done(); return; }
@@ -2440,35 +2570,55 @@ async function renderAdmin(){
 
   // What AUTO would pick right now, so the operator can see the booth has
   // actually found the camera they plugged in.
-  const external = cams.find(c => isExternalCamera(c.label));
+  const external = cams.find(c => isExternalCamera(c));
   const inUse = cams.find(c => c.deviceId === activeCameraId());
-  parts.push(section('CAMERA', 'camera', [
+  const camRows = [
     row('DEVICE', seg('cameraId',
       [['auto', 'AUTO (USB FIRST)'], ['builtin', 'BUILT-IN']]
         .concat(cams.map(c => [c.deviceId, c.label])), settings.cameraId || 'auto')),
     row('IN USE', '<div class="seg"><button class="on">' +
         escapeHTML((inUse && inUse.label) || (stream ? 'BUILT-IN' : 'NOT OPEN')) +
         '</button></div>'),
+    // What the camera is actually sending. A Charmera is a VGA-class webcam,
+    // so a 640x480 feed is the proof it is the one in use and not the lens
+    // built into the tablet, whatever the label says.
+    row('FEED', '<div class="seg"><button class="on">' +
+        escapeHTML(feedDescription()) + '</button></div>'),
+  ];
+
+  if (NATIVE) {
     // The bus itself, unfiltered. When a camera will not show up this is the
     // one line worth reading out to someone.
-    row('USB PORT', '<div class="seg"><button class="on">' +
-        escapeHTML(NATIVE
-          ? (usbDevices().map(d => d.name + ' / ' + d.kind).join('  ·  ') || 'EMPTY')
-          : 'N/A IN BROWSER') +
-        '</button></div>'),
+    camRows.push(row('USB PORT', '<div class="seg"><button class="on">' +
+        escapeHTML(usbDevices().map(d => d.name + ' / ' + d.kind).join('  ·  ') || 'EMPTY') +
+        '</button></div>'));
     // And what Android's own camera system makes of it. A video device on the
     // bus with no EXTERNAL here is a tablet that will never share the camera.
-    row('ANDROID SEES', '<div class="seg"><button class="on">' +
-        escapeHTML(NATIVE ? (systemCameras() || 'NONE') : 'N/A IN BROWSER') +
-        '</button></div>'),
+    camRows.push(row('ANDROID SEES', '<div class="seg"><button class="on">' +
+        escapeHTML(systemCameras() || 'NONE') + '</button></div>'));
+  } else {
+    // Every camera the page can see, labelled exactly as the browser labels
+    // it. The heuristic that picks the external one matches on these strings,
+    // so when AUTO guesses wrong this row is the thing to read out.
+    camRows.push(row('SEEN', '<div class="seg"><button class="on">' +
+        escapeHTML(cams.map(c => c.label).join('  ·  ') || 'NONE') +
+        '</button></div>'));
+    // Safari withholds labels, and on iPadOS will not list a USB camera at
+    // all, until the page holds a camera grant — and it does not reliably
+    // fire devicechange when one is plugged in. So: a button.
+    camRows.push(row('USB CAMERA', '<div class="seg">' +
+        '<button data-act="camera-rescan">LOOK AGAIN</button></div>'));
+  }
+
+  camRows.push(
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
     row('COUNTDOWN', num('countdownSeconds', 1, 10, 1, 's')),
     row('SHOT GAP', num('betweenShotsSeconds', 0.5, 6, 0.5, 's')),
     note(external ? 'info' : 'warn', external
       ? 'AUTO is using the plugged-in camera: ' + external.label + '. Unplug it and the booth falls back to the built-in lens on the next session.'
-      : usbCameraNote()),
-    note('info', 'The preview is mirrored so people can pose. The saved photo never is — a mirrored print reverses every logo in the room.'),
-  ]));
+      : usbCameraNote(cams)),
+    note('info', 'The preview is mirrored so people can pose. The saved photo never is — a mirrored print reverses every logo in the room.'));
+  parts.push(section('CAMERA', 'camera', camRows));
 
   const silent = silentPrintingLikely();
   const printRows = [
@@ -2639,10 +2789,30 @@ function systemCameras(){
  * in, plugged in as a *drive*, or plugged in as a camera the tablet will not
  * share — and they need completely different fixes. The shell can see the
  * USB bus, so say which one it is instead of a shrug. */
-function usbCameraNote(){
+function usbCameraNote(cams){
   if (!NATIVE) {
-    return 'No USB camera detected — AUTO is using the built-in lens. Plug a ' +
-           'camera in and it is picked up on the next session.';
+    cams = cams || [];
+    // iPadOS is the one browser platform that will hand a page a USB camera,
+    // so it gets the advice that can actually lead somewhere. Everything else
+    // gets the short version.
+    if (!IPADOS) {
+      return 'No USB camera detected — AUTO is using the built-in lens. Plug a ' +
+             'camera in and press LOOK AGAIN.';
+    }
+    if (!cams.length) {
+      return 'This page has no camera yet, so it cannot see what is plugged in. ' +
+             'Press LOOK AGAIN and allow the camera when Safari asks.';
+    }
+    return 'iPadOS shares USB cameras with web pages, but only ' + cams.length +
+           ' camera' + (cams.length === 1 ? ' is' : 's are') + ' showing and ' +
+           'none of them looks external. Three things to check, in this order. ' +
+           'Take the memory card out of the Charmera — with a card in it is a ' +
+           'drive, not a camera, and nothing can preview from it. Use a ' +
+           'USB-C-to-USB-C cable: the one in the box is USB-C-to-USB-A and will ' +
+           'not reach an iPad without an adapter. Then press LOOK AGAIN — ' +
+           'Safari does not always notice a camera being plugged in. If it ' +
+           'still will not appear, open FaceTime and see whether that finds it: ' +
+           'if FaceTime cannot either, it is the camera or the cable, not the booth.';
   }
   const devices = usbDevices();
   if (!devices.length) {
@@ -2776,7 +2946,11 @@ async function listCameras(){
     // entries with an empty deviceId — which would collide with the
     // DEFAULT option and light up two segments at once.
     return devices.filter(d => d.kind === 'videoinput' && d.deviceId)
-                  .map((d, i) => ({deviceId: d.deviceId, label: d.label || ('CAMERA ' + (i + 1))}));
+                  .map((d, i) => ({deviceId: d.deviceId,
+                                   label: d.label || ('CAMERA ' + (i + 1)),
+                                   // Safari hands back nameless entries until
+                                   // the page holds a camera grant.
+                                   named: !!d.label}));
   } catch { return []; }
 }
 
@@ -2825,6 +2999,7 @@ const ACTIONS = {
   'copies-down': () => { session.copies = Math.max(1, session.copies - 1); updateCopies(); },
   print: submitPrint,
   'save-png': savePNG,
+  'camera-rescan': rescanCameras,
 };
 
 document.addEventListener('click', e => {
@@ -2972,6 +3147,11 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 layoutToCanvas, registerCustom, registerCanvasLayout, renderCanvas,
                 canvasPixels, sheetPixels, fitsPaper,
                 pixelTextCanvas, setPixel, compactStage, isStandalone,
+                // Camera and print plumbing, exported so a test can reach it:
+                // the iPad route through these cannot be exercised by hand
+                // from this machine.
+                IPADOS, isExternalCamera, listCameras, feedDescription,
+                printPageCSS, printFromDocument, rescanCameras,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.

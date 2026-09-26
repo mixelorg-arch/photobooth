@@ -47,6 +47,50 @@ Home Screen icon will keep serving the old build.
 **Lock it down** with Settings → Accessibility → **Guided Access**, then
 triple-click the side button on the attract screen.
 
+## A USB camera on an iPad
+
+iPadOS shares USB Video Class cameras with web pages — Safari's `getUserMedia`
+can open one — so an iPad with a USB-C port is the one browser platform where
+a plugged-in camera works with no native app at all. It needs iPadOS 17 or
+later. This is the opposite of Android, where the external-camera driver is
+optional and many tablets (the Huawei MatePad SE among them) show the camera
+on the USB bus and then never hand it to any app.
+
+**The Kodak Charmera specifically.**
+
+1. **Take the memory card out.** With a card in, it mounts as a drive and no
+   app anywhere can take a preview from it. No card is what puts it into
+   webcam mode. This is the usual reason it does not appear.
+2. **Use a USB-C-to-USB-C cable.** The one in the box is USB-C-to-USB-A and
+   needs an adapter before it reaches an iPad. Get a long one — a 20 cm cable
+   cannot reach where guests stand.
+3. Open **Admin → CAMERA → LOOK AGAIN**, and allow the camera when Safari
+   asks. Safari hides camera names, and on iPadOS will not list a USB camera
+   at all, until the page has been granted the camera once; it also does not
+   reliably notice a camera being plugged in afterwards. LOOK AGAIN is what
+   covers both.
+
+**Reading the CAMERA rows when it will not appear.** `SEEN` lists every camera
+the page can find, named exactly as Safari names it. `FEED` is the size of the
+picture actually arriving — the Charmera is a VGA-class webcam, so `640x480`
+on an iPad whose own lens does 1080p is the plainest confirmation that the
+right camera is in use, whatever the label says. If `SEEN` shows only Front
+and Back Camera, work through the three steps above; if it still will not
+appear, open FaceTime and see whether that finds it. If FaceTime cannot
+either, it is the camera or the cable, not the booth.
+
+AUTO picks a plugged-in camera over the built-in lens by name. On iPadOS the
+rule is stronger than the keyword list used elsewhere: iPadOS names its own
+lenses Front Camera, Back Camera and Desk View Camera and nothing else, so
+anything left over is something plugged in — which catches USB cameras whose
+product name says nothing about being a webcam. Pin one explicitly under
+Admin → CAMERA → DEVICE if AUTO ever guesses wrong.
+
+**What it will look like.** The Charmera is a keychain camera with a tiny
+sensor and its webcam mode is VGA-class. On 58 mm and 80 mm thermal that costs
+nothing — the paper is 384 and 576 dots wide and dithered to one bit — but on
+a 4x6 SELPHY print it will be visibly soft. That is the camera, not the booth.
+
 ## Hosting
 
 Live at **<https://mixelorg-arch.github.io/photobooth/>**.
@@ -101,6 +145,13 @@ has no kiosk-printing flag — there is no way for a web page to print silently
 there, and no workaround exists. On an iPad the guest picks the printer from
 the sheet each time. If silent printing on the iPad matters more than avoiding
 Xcode, the native build is the only way to get it.
+
+Printing on iPadOS also takes a different route inside the app. Every other
+browser prints from a hidden iframe, which keeps the job out of the visible
+page; Safari on iOS and iPadOS ignores `print()` called on an iframe entirely
+and only prints the top-level window. So on an iPad the sheet is placed in the
+page itself, in a block that is hidden on screen and is the only thing visible
+on paper. The page rules are the same either way, so the paper is the same.
 
 **There is no web API for that.** `window.print()` always raises the system
 print dialog and no page can suppress it — that is a deliberate browser
