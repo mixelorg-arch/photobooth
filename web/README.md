@@ -47,6 +47,46 @@ Home Screen icon will keep serving the old build.
 **Lock it down** with Settings → Accessibility → **Guided Access**, then
 triple-click the side button on the attract screen.
 
+## Camera permission on an iPad
+
+**No web page can grant itself a camera.** That is a browser boundary, not a
+gap to code around, and it holds on every platform. What the booth controls is
+how often it *asks*.
+
+iOS does not remember the answer for a Home Screen web app. The decision is
+thrown away when the app closes and asked for again the next time anything
+calls `getUserMedia` — see [WebKit
+215884](https://bugs.webkit.org/show_bug.cgi?id=215884). Releasing the camera
+at the end of a session therefore puts a permission prompt in front of **every
+guest**, which is what used to happen here.
+
+So on iPadOS the booth takes the camera once, at launch, and never lets go:
+
+* The request happens seconds after the icon is tapped, so the prompt lands on
+  whoever is setting the booth up rather than on the first guest in the queue.
+* A session ending no longer releases the camera, and neither does a USB device
+  being plugged in. Measured over ten consecutive sessions: **one request at
+  launch, none seen by a guest.** The same ten sessions ask ten times on every
+  other platform, which is the behaviour that already shipped there and is left
+  alone — a WebView and a desktop browser both remember the grant, so holding a
+  lens open between guests would cost a live camera and buy nothing.
+* Coming back from the background retakes it. iOS ends the tracks of a
+  backgrounded web app, and an ended track is not an error — it is a black
+  preview and a countdown that photographs nothing.
+* **Do not close the app between guests.** Closing it is the one thing that
+  brings the prompt back.
+
+**Admin → CAMERA → ACCESS** reads `HELD FOR THIS LAUNCH` once the answer is in.
+That is the state to leave the booth in before the doors open. If it reads
+`NOT GRANTED YET`, press LOOK AGAIN and answer the prompt.
+
+**To be rid of the prompt entirely**, run the booth in Safari rather than from
+the Home Screen and set **Settings → Safari → Camera → Allow**. Safari
+remembers that; a Home Screen app cannot. The cost is the address bar, and
+losing the full-screen launch and the screen-stays-awake behaviour. For a
+kiosk iPad that does nothing else it is a reasonable trade; for a shared iPad
+it is not, because it grants the camera to every site.
+
 ## A USB camera on an iPad
 
 iPadOS shares USB Video Class cameras with web pages — Safari's `getUserMedia`
