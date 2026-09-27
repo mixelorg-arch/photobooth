@@ -377,9 +377,20 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 
 /* the capture flash — a hard white blast, no colour fringing here: this
    panel language is monochrome, so the glitch is a plain inversion */
-.flash{position:absolute;inset:0;z-index:70;pointer-events:none;opacity:0;background:var(--paper)}
-.flash.fire{animation:flash .26s steps(4)}
-@keyframes flash{0%{opacity:1}100%{opacity:0}}
+/* The screen as a flash.
+ *
+ * `fixed`, not `absolute`: this is the only light a tablet booth has, so it
+ * has to be the whole panel edge to edge — the stage alone is a fraction of
+ * the glass and a fraction of the light. Pure white rather than --paper, and
+ * above everything, because anything it does not cover is area not lighting
+ * the guest.
+ *
+ * `.lit` has no transition: the light must reach full strength on the frame
+ * it is asked for, or the exposure happens against a ramp. Letting go of
+ * `.lit` fades it, which is gentler on the eye than a hard cut. */
+.flash{position:fixed;inset:0;z-index:200;pointer-events:none;opacity:0;
+       background:#FFFFFF;transition:opacity .2s linear}
+.flash.lit{opacity:1;transition:none}
 
 
 /* ==================================================================== *

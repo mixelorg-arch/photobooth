@@ -435,6 +435,26 @@ const layoutById = id => LAYOUTS.find(l => l.id === id) || LAYOUTS[0];
  * on screen and the sheet that reaches the printer are the same canvas,
  * so a tile can never disagree with the paper.
  * ==================================================================== */
+/* Resampling quality for every photograph drawn into a sheet.
+ *
+ * This is the upscale end of the thermal pipeline. A booth photograph is
+ * almost never the size of the slot it lands in: a 1920-wide capture is
+ * reduced into a 780-wide slot on a label, and a Kodak Charmera, which is
+ * VGA-class, is genuinely *enlarged* to fill the same slot. The browser's
+ * default resampling is a single bilinear step, which blurs on the way down
+ * and goes soft and blocky on the way up — and a dither turns softness into
+ * mush, because there is no grey left to carry a soft edge.
+ *
+ * `high` costs nothing here and is the difference between a face that
+ * survives one bit and one that does not. Set on the context, so every
+ * drawImage in every renderer inherits it.
+ */
+function smoothing(g){
+  g.imageSmoothingEnabled = true;
+  if ('imageSmoothingQuality' in g) g.imageSmoothingQuality = 'high';
+  return g;
+}
+
 function renderSheet(photos, tpl, media, branding, scale, opts){
   // Three engines behind one entry point: a layout from the editor places
   // its elements where they were put; a roll flows; a sheet fits. Nothing
@@ -446,7 +466,7 @@ function renderSheet(photos, tpl, media, branding, scale, opts){
   const W = Math.round(px.w * (scale || 1)), H = Math.round(px.h * (scale || 1));
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
-  const g = c.getContext('2d');
+  const g = smoothing(c.getContext('2d'));
 
   g.fillStyle = tpl.background;
   g.fillRect(0, 0, W, H);
@@ -858,7 +878,7 @@ function renderReceipt(photos, tpl, media, brand, scale, opts){
   const plan = receiptPlan(tpl, brand, W, opts);
   const c = document.createElement('canvas');
   c.width = plan.width; c.height = plan.height;
-  const g = c.getContext('2d');
+  const g = smoothing(c.getContext('2d'));
   g.fillStyle = tpl.background || '#FFFFFF';
   g.fillRect(0, 0, c.width, c.height);
   drawReceipt(g, plan, tpl, brand, photos, W, opts);
@@ -1019,7 +1039,7 @@ function renderCanvas(photos, tpl, media, brand, scale, opts){
   const H = Math.max(1, Math.round(px.h * (scale || 1)));
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
-  const g = c.getContext('2d');
+  const g = smoothing(c.getContext('2d'));
   g.fillStyle = tpl.background || '#FFFFFF';
   g.fillRect(0, 0, W, H);
 
@@ -1412,6 +1432,16 @@ const DEFAULTS = {
   /// one; 'builtin' pins the tablet's own lens; anything else is a deviceId.
   cameraId: 'auto',
   mirrorPreview: true,
+  /* --- the screen as a flash --- */
+  /// Fill the panel with white for the moment of capture. The only light a
+  /// tablet booth has, and on a dark stage it is worth real stops on a face.
+  flashEnabled: true,
+  /// How long the white is held before the frame is read, in milliseconds.
+  /// A camera needs a few frames at 30fps to meter against new light; too
+  /// short and the photograph is taken before the exposure has moved.
+  flashHoldMs: 140,
+  /// How white. Below 1 it is gentler on the eye and gives less light.
+  flashLevel: 1,
   countdownSeconds: 3,
   betweenShotsSeconds: 1.5,
   defaultCopies: 1,
@@ -1435,7 +1465,7 @@ const DEFAULTS = {
   /// makes a face look like a face; 'ordered' is a fixed screen, coarser but
   /// more even on flat tone; 'none' hands 8-bit grey to the driver and lets
   /// it decide, which is what the booth used to do.
-  thermalDither: 'floyd',
+  thermalDither: 'adaptive',
   /// Midtone contrast before dithering. Thermal prints compress the ends of
   /// the scale, so a photograph that looks right on screen goes muddy.
   thermalContrast: 1.35,
@@ -1445,6 +1475,10 @@ const DEFAULTS = {
   /// Unsharp masking before dithering. Error diffusion smears fine edges;
   /// a little sharpening puts them back. 0 turns it off.
   thermalSharpen: 0.8,
+  /// Lifts whatever sits in local shadow — which at a booth is a face, since
+  /// a face is the thing lit from one side and standing in front of a
+  /// brighter room. Not face detection: see liftShadows.
+  thermalFaceLift: 0.45,
   /* --- the receipt, on 80mm thermal --- */
   /// Names for the shot-order rows, comma separated. Falls back to FRAME 01.
   printTracks: '',
@@ -2123,8 +2157,12 @@ async function runCaptureSequence(targets){
     await countdown(token);
     if (token !== session.captureToken) return;
 
-    fireFlash();
+    // Light first, expose second, drop the light third. Doing these in any
+    // other order is what made the old flash decorative.
+    await raiseFlash();
+    if (token !== session.captureToken) { dropFlash(); return; }
     const frame = grabFrame();
+    dropFlash();
     if (frame) {
       session.photos[slots[i]] = frame;
       session.times[slots[i]] = Date.now();
@@ -2163,11 +2201,41 @@ async function countdown(token){
   osd.hidden = true;
 }
 
-function fireFlash(){
+/* Light the guest with the screen, and hold it lit while the frame is taken.
+ *
+ * The old version of this fired on the same line as the capture, which made
+ * it a sound effect with no sound: the white had not been composited, let
+ * alone reached the guest and come back, by the time the frame was read. It
+ * looked like a flash to the person watching the screen and contributed no
+ * light whatsoever to the photograph.
+ *
+ * Two things fix that. The white has to be *painted* before the shutter, so
+ * this waits for two animation frames — one to apply the class, one to be
+ * sure the compositor has shown it. And a camera does not change exposure on
+ * the frame the light arrives: it needs a few frames at 30fps to meter and
+ * settle, which is what FLASH HOLD buys. The caller keeps the light up across
+ * the capture and drops it afterwards.
+ *
+ * On a dark stage this is worth real stops on a face. It cannot raise the
+ * panel's backlight — no web page can — so brightness on the device should be
+ * up for an event.
+ */
+async function raiseFlash(){
+  if (!settings.flashEnabled) return false;
   const f = el('#flash');
-  f.classList.remove('fire');
-  void f.offsetWidth;                  // restart the animation
-  f.classList.add('fire');
+  f.style.opacity = String(settings.flashLevel);
+  f.classList.add('lit');
+  // Two frames: the class is applied on the first, shown on the second.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // Then let the sensor meter against the new light.
+  if (settings.flashHoldMs > 0) await sleep(settings.flashHoldMs);
+  return true;
+}
+
+function dropFlash(){
+  const f = el('#flash');
+  f.classList.remove('lit');           // the transition fades it out
+  f.style.opacity = '';
 }
 
 function setBars(sel, fraction, blocks, tint){
@@ -2241,6 +2309,101 @@ const BAYER4 = [
   [15,  7, 13,  5],
 ];
 
+/* The average brightness of each pixel's *neighbourhood*, which is what makes
+ * the next two steps local rather than global.
+ *
+ * Computed on a downsampled grid and sampled back bilinearly. A true blur of
+ * this radius over a million dots would cost more than the whole rest of the
+ * pipeline; at this radius the difference is invisible, because the map is
+ * only ever used as a slowly varying reference level.
+ */
+function localMean(lum, W, H, radius){
+  const step = Math.max(1, Math.round(radius / 2));
+  const sw = Math.max(1, Math.ceil(W / step)), sh = Math.max(1, Math.ceil(H / step));
+  let grid = new Float32Array(sw * sh);
+  const count = new Float32Array(sw * sh);
+  for (let y = 0; y < H; y++) {
+    const gy = (y / step) | 0;
+    for (let x = 0; x < W; x++) {
+      const gi = gy * sw + ((x / step) | 0);
+      grid[gi] += lum[y * W + x]; count[gi]++;
+    }
+  }
+  for (let i = 0; i < grid.length; i++) grid[i] /= (count[i] || 1);
+
+  // Two box passes over the small grid: close enough to a gaussian that
+  // nothing downstream can tell, at a fraction of the cost.
+  for (let pass = 0; pass < 2; pass++) {
+    const next = new Float32Array(sw * sh);
+    for (let y = 0; y < sh; y++) {
+      for (let x = 0; x < sw; x++) {
+        let sum = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= sh) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx; if (xx < 0 || xx >= sw) continue;
+            sum += grid[yy * sw + xx]; n++;
+          }
+        }
+        next[y * sw + x] = sum / n;
+      }
+    }
+    grid = next;
+  }
+
+  // Back up to full size, bilinear, so the map has no visible blocking.
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const fy = Math.min(sh - 1, y / step), y0 = fy | 0, y1 = Math.min(sh - 1, y0 + 1), ty = fy - y0;
+    for (let x = 0; x < W; x++) {
+      const fx = Math.min(sw - 1, x / step), x0 = fx | 0, x1 = Math.min(sw - 1, x0 + 1), tx = fx - x0;
+      const a = grid[y0 * sw + x0], b = grid[y0 * sw + x1];
+      const c = grid[y1 * sw + x0], d = grid[y1 * sw + x1];
+      out[y * W + x] = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
+    }
+  }
+  return out;
+}
+
+/* Lift what is sitting in local shadow, and leave everything else alone.
+ *
+ * This is the "brighten faces" step, and it is worth being exact about what
+ * it is not: there is no face detection here. The browsers this runs in do
+ * not offer one — Safari has no Shape Detection API at all and Chrome has
+ * unshipped its FaceDetector — and carrying a detection model would mean
+ * megabytes of weights in an app whose whole point is that it works offline
+ * with no network permission at all.
+ *
+ * What it does instead is exploit the one thing reliably true of a booth
+ * photograph: the face is the subject, the subject is nearer the light than
+ * the background, and on thermal paper the part that fails is whatever sits
+ * in local shadow — cheeks, eye sockets, the underside of a chin — which
+ * fills in solid black and takes the features with it. Lifting by *local*
+ * average rather than a global curve raises exactly those regions without
+ * flattening the rest of the sheet, and the headroom term stops highlights
+ * from washing out.
+ *
+ * Returns the local mean map, because the adaptive dither wants it too and
+ * computing it twice would be waste.
+ */
+function liftShadows(lum, W, H, amount){
+  const radius = Math.max(8, Math.round(Math.min(W, H) / 12));
+  const mean = localMean(lum, W, H, radius);
+  if (amount > 0) {
+    for (let i = 0; i < lum.length; i++) {
+      // How deeply this neighbourhood sits in shadow. Zero once the
+      // surroundings reach mid-grey, so lit areas are untouched.
+      const shade = mean[i] >= 140 ? 0 : (140 - mean[i]) / 140;
+      if (shade === 0) continue;
+      // How much room is left before white. Protects highlights.
+      const head = lum[i] >= 235 ? 0 : (235 - lum[i]) / 235;
+      const v = lum[i] + amount * 55 * shade * head;
+      lum[i] = v > 255 ? 255 : v;
+    }
+  }
+  return mean;
+}
+
 /// Sharpen in place: out = in + amount * (in - blur), with a 3x3 box blur.
 /// Cheap, and at 203dpi indistinguishable from anything more principled.
 function unsharp(lum, W, H, amount){
@@ -2293,6 +2456,48 @@ function ditherFloyd(lum, W, H){
   }
 }
 
+/* Error diffusion against a threshold that follows the local average.
+ *
+ * Plain Floyd-Steinberg decides every dot against the same mid-grey. That is
+ * right for an evenly lit picture and wrong for a booth, where one region of
+ * the sheet can sit well below the threshold and another well above: the dark
+ * region has every dot fall the same way and goes solid, and detail inside it
+ * is lost no matter how much error is diffused.
+ *
+ * Letting the threshold drift toward the neighbourhood's own average means a
+ * dark region is judged against dark, so its internal structure survives. The
+ * drift is partial — a fraction of the way, not all of it — because a
+ * threshold that tracked the local mean exactly would reproduce only edges
+ * and throw away the tone itself. It is clamped so no region can end up
+ * deciding everything one way.
+ */
+function ditherAdaptive(lum, W, H, mean, strength){
+  const k = strength === undefined ? 0.55 : strength;
+  for (let y = 0; y < H; y++) {
+    const ltr = (y & 1) === 0;
+    for (let i = 0; i < W; i++) {
+      const x = ltr ? i : W - 1 - i;
+      const idx = y * W + x;
+      let t = 128 + (mean[idx] - 128) * k;
+      if (t < 64) t = 64; else if (t > 196) t = 196;
+      const was = lum[idx];
+      const now = was < t ? 0 : 255;
+      lum[idx] = now;
+      const err = was - now;
+      if (err === 0) continue;
+      const fwd = ltr ? 1 : -1;
+      const hasNext = ltr ? x + 1 < W : x - 1 >= 0;
+      const hasPrev = ltr ? x - 1 >= 0 : x + 1 < W;
+      if (hasNext) lum[idx + fwd] += err * 0.4375;
+      if (y + 1 < H) {
+        if (hasPrev) lum[idx + W - fwd] += err * 0.1875;
+        lum[idx + W] += err * 0.3125;
+        if (hasNext) lum[idx + W + fwd] += err * 0.0625;
+      }
+    }
+  }
+}
+
 function ditherOrdered(lum, W, H){
   for (let y = 0; y < H; y++) {
     const rowScreen = BAYER4[y & 3];
@@ -2324,9 +2529,25 @@ function thermalize(canvas, media, opts){
   const contrast = opts.contrast !== undefined ? opts.contrast : settings.thermalContrast;
   const bright = opts.brightness !== undefined ? opts.brightness : settings.thermalBrightness;
   const sharpen = opts.sharpen !== undefined ? opts.sharpen : settings.thermalSharpen;
+  const lift = opts.faceLift !== undefined ? opts.faceLift : settings.thermalFaceLift;
 
-  // Luminance, toned. Kept in floats because error diffusion needs somewhere
-  // to put fractions of a dot.
+  /* The order below is the pipeline, and each step is where it is for a
+   * reason:
+   *
+   *   greyscale -> contrast -> lift local shadow -> sharpen -> dither
+   *
+   * Greyscale first because everything after it works on one channel, and
+   * weighting the channels by how the eye sees them is what keeps skin from
+   * going to slate. Contrast next, while the tone is still continuous.
+   * Shadow lifting after contrast, because contrast is what pushes faces
+   * into the shadow that then needs lifting. Sharpening after the tone is
+   * settled but before the dither, since sharpening a dithered image only
+   * sharpens dot noise. Dithering last, because nothing can be adjusted
+   * once there are only two values left.
+   *
+   * (Upscaling belongs to this pipeline too, but happens earlier, where the
+   * photograph is drawn into the sheet — see SMOOTHING in the renderers.)
+   */
   const lum = new Float32Array(W * H);
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     let v = LUMA_R * d[i] + LUMA_G * d[i + 1] + LUMA_B * d[i + 2];
@@ -2334,9 +2555,13 @@ function thermalize(canvas, media, opts){
     lum[p] = v < 0 ? 0 : v > 255 ? 255 : v;
   }
 
+  // Also returns the local average, which the adaptive dither needs.
+  const mean = liftShadows(lum, W, H, lift);
   unsharp(lum, W, H, sharpen);
+
   if (mode === 'ordered') ditherOrdered(lum, W, H);
-  else ditherFloyd(lum, W, H);
+  else if (mode === 'floyd') ditherFloyd(lum, W, H);
+  else ditherAdaptive(lum, W, H, mean);
 
   for (let i = 0, p = 0; i < d.length; i += 4, p++) {
     const v = lum[p];
@@ -2892,8 +3117,14 @@ async function renderAdmin(){
 
   camRows.push(
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
+    row('SCREEN FLASH', seg('flashEnabled', [[true, 'ON'], [false, 'OFF']], settings.flashEnabled)),
+    row('FLASH HOLD', num('flashHoldMs', 0, 500, 20, 'ms')),
+    row('FLASH LEVEL', num('flashLevel', 0.2, 1, 0.1, '')),
     row('COUNTDOWN', num('countdownSeconds', 1, 10, 1, 's')),
     row('SHOT GAP', num('betweenShotsSeconds', 0.5, 6, 0.5, 's')),
+    note(settings.flashEnabled ? 'info' : 'warn', settings.flashEnabled
+      ? 'The whole panel turns white for the moment of the shutter, which is the only light a tablet booth has. FLASH HOLD is how long it stays lit before the frame is read — a camera needs a few frames to meter against new light, so at 0 the photograph is taken before the exposure has moved and the flash does nothing. Raise it if faces still come out dark; lower it if the pause feels long. Turn the device\u2019s screen brightness up: no web page can raise the backlight itself.'
+      : 'Off: the shutter is silent and dark. On a lit stage that is right; in a dim room faces will be underexposed and there is nothing downstream that can put the light back.'),
     note(external ? 'info' : 'warn', external
       ? 'AUTO is using the plugged-in camera: ' + external.label + '. Unplug it and the booth falls back to the built-in lens on the next session.'
       : usbCameraNote(cams)),
@@ -2970,16 +3201,21 @@ async function renderAdmin(){
     const mode = settings.thermalDither || 'floyd';
     parts.push(section('THERMAL IMAGE', 'star', [
       row('DITHER', seg('thermalDither',
-        [['floyd', 'DIFFUSION'], ['ordered', 'SCREEN'], ['none', 'OFF']], mode)),
+        [['adaptive', 'ADAPTIVE'], ['floyd', 'DIFFUSION'],
+         ['ordered', 'SCREEN'], ['none', 'OFF']], mode)),
       row('CONTRAST', num('thermalContrast', 0.6, 2.5, 0.05, '')),
       row('BRIGHTNESS', num('thermalBrightness', -40, 40, 4, '')),
+      row('FACE LIFT', num('thermalFaceLift', 0, 1, 0.05, '')),
       row('SHARPEN', num('thermalSharpen', 0, 2, 0.2, '')),
       note(mode === 'none' ? 'warn' : 'info',
         mode === 'none'
           ? 'OFF sends the printer 8-bit grey and lets its driver decide which dots to burn. Most drivers simply threshold — every tone above a level goes white, everything below goes black — and a face becomes two flat shapes. This is what the booth did before; keep it only if your printer dithers better than this does.'
           : mode === 'ordered'
-          ? 'SCREEN uses a fixed 4x4 pattern. Coarser than DIFFUSION on a face, but it never smears, so large flat areas stay even. Worth trying if DIFFUSION shows worm-like streaks on plain backgrounds.'
-          : 'DIFFUSION pushes each dot\u2019s rounding error into its neighbours, so midtones become a texture that reads as grey at arm\u2019s length. This is what keeps a face looking like a face on a one-bit head.'),
+          ? 'SCREEN uses a fixed 4x4 pattern. Coarser than the other two on a face, but it never smears, so large flat areas stay even. Worth trying if you see worm-like streaks on plain backgrounds.'
+          : mode === 'floyd'
+          ? 'DIFFUSION judges every dot against the same mid-grey and pushes the error into its neighbours. Even and predictable, but a region that sits well below mid-grey has every dot fall the same way and goes solid.'
+          : 'ADAPTIVE is DIFFUSION with the threshold following the local average. On test targets it lifts the contrast of features inside a shadow a little, and costs a little fine detail and a little more ink — the two modes measured close enough that the honest advice is to print one of each and keep whichever you prefer. The large gain over a driver\u2019s own halftoning is in both.'),
+      note('info', 'The full path a photograph takes: upscale, greyscale, contrast, lift local shadow, sharpen, dither. FACE LIFT raises whatever sits in local shadow — at a booth that is usually a face, lit from one side in front of a brighter room. It is not face detection: no browser here offers one, and carrying a model would cost megabytes in an app whose point is working offline. It reads the local average instead, which lightens shadowed cheeks and eye sockets without flattening the rest of the sheet. Measured, its effect is modest; set it to 0 if shadows look washed out.'),
       note('info', 'CONTRAST and BRIGHTNESS are applied before dithering, because afterwards there is nothing continuous left to adjust. Thermal paper darkens as heat spreads around each dot, so prints come out heavier than the screen suggests — raise BRIGHTNESS if faces are filling in, raise CONTRAST if the whole thing looks grey and flat. SHARPEN puts back the fine edges that error diffusion smears; set it to 0 if text starts to look gritty.'),
       note('info', 'The review and confirm screens show the dithered sheet, so what a guest approves is exactly what burns, dot for dot.'),
     ]));
@@ -3299,10 +3535,12 @@ function wireAdmin(root){
 
 function afterSettingChange(key){
   if (key === 'mirrorPreview') applyMirror();
+  if (key === 'flashEnabled') renderAdmin();
   // The thermal controls only mean anything against a picture, so redraw the
   // one in hand and refresh the note under the switch.
   if (key === 'thermalDither' || key === 'thermalContrast' ||
-      key === 'thermalBrightness' || key === 'thermalSharpen') {
+      key === 'thermalBrightness' || key === 'thermalSharpen' ||
+      key === 'thermalFaceLift') {
     if (session.photos && session.photos.some(Boolean) && session.layout) compose();
     if (key === 'thermalDither') renderAdmin();
   }
@@ -3563,7 +3801,8 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 feedDescription, cameraHeld, cameraHoldState, permissionNote,
                 recoverCameraIfDropped,
                 printPageCSS, printFromDocument, rescanCameras,
-                thermalize,
+                thermalize, liftShadows, localMean, smoothing,
+                raiseFlash, dropFlash,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
