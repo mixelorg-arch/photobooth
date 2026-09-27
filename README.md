@@ -8,6 +8,53 @@ bitmap font's glyph table is shared verbatim between the two.
 
 Three files, no dependencies, no build step.
 
+## The look
+
+Rebuilt from a shipping-label / spec-sheet reference. Four rules carry it:
+
+1. **Black ground, modules on top.** Nothing floats: every element is a
+   rectangle with a 3px black edge, butted against its neighbours so the black
+   shows through as the gutter. No radii, no shadows, no gradients.
+2. **Two panel values and only two** — LIGHT `#EDEDED` with black ink, DARK
+   `#0B0B0B` with white. Alternating them gives the grid its rhythm; a third
+   grey turns it to mush.
+3. **Every module is labelled like a form**: a caps label left, a right-aligned
+   value, a rule under them.
+4. **Colour is a fill and appears at most twice a screen.** Blue is the system
+   accent, yellow marks the one thing to press, red is only ever a fault.
+
+The old 5x7 bitmap font is gone — `setPixel` sets real text now, and `data-cell`
+survives as a *step* on a type scale rather than a pixel size, so every call
+site still asks for the same relative weight in the hierarchy.
+
+**The camera fills the stage and everything else is laid over it.** A booth's
+whole job at that moment is to show someone their own face as large as the
+glass allows; the framed, padded module the preview used to sit in was spending
+a third of the screen on chrome to say the word CAMERA. The readouts are pinned
+strips top and bottom, the countdown is a corner badge, and the crop guide
+carries a scrim so the slice the paper will take is obvious — nothing is
+centred over a face.
+
+### Three CSS traps this shook out
+
+* **`align-items:flex-start` on a full-height row.** `.pad` and `.row` are used
+  together on the two-pane screens; the row's alignment made the columns shrink
+  to content, so the buttons at the foot of the right column fell off the
+  bottom of the screen.
+* **`min-height:auto` on flex children.** A tall proof or a wrapped row of
+  thumbnails pushes its module past the stage instead of scaling down. Every
+  container in the chain has to say `min-height:0` before `max-height:100%` on
+  the canvas means anything.
+* **`display:grid; place-items:center` for centring a sheet.** The canvas lands
+  in an implicitly-sized row, and a percentage `max-height` against an auto row
+  has no definite basis, so it is ignored outright — the sheet scales on width,
+  runs past the module and gets clipped. Flex has a definite height here, so
+  the same percentage resolves.
+
+The print renderers are untouched. The sheet design — receipts, labels, the
+layout editor's output — is a separate language from the screen's and stays as
+it was.
+
 ## Running it
 
 **It has to be served over `http://localhost` or HTTPS.** Browsers only give a

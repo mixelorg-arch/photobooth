@@ -37,27 +37,61 @@
   <main class="stage">
 
   <!-- ---------- 1 ATTRACT ---------- -->
+  <!--
+    Laid out as a specimen sheet rather than a splash screen: a grid of
+    modules packed against each other with the black ground showing through
+    as the gutter. The decorative cells are not filler — a label system reads
+    as one because of the density, and a single centred panel in a field of
+    black reads as a dialog box.
+  -->
   <section class="screen" data-screen="attract">
-    <div class="centre">
-      <div class="mod wide">
-        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="5">SAY CHEESE</b>
-          <i class="ln"></i><b class="px" data-cell="3" id="attract-layouts">6 LAYOUTS</b><i class="ln s"></i></div>
-        <div class="mod-in col gap24">
-          <div class="row gap20 mid">
-            <span class="ic" data-icon="eyeball" data-size="104" data-accent="#A9A2CE"></span>
-            <div class="col gap10 fill">
-              <div class="px" data-cell="4">PHOTOS IN A MINUTE</div>
-              <div class="px dim" data-cell="4">PRINTED ON THE SPOT</div>
+    <div class="sheet">
+      <div class="sheet-main">
+        <div class="mod fill">
+          <div class="mod-top"><b class="px" data-cell="4">SAY CHEESE</b>
+            <b class="px" data-cell="3" id="attract-layouts">6 LAYOUTS</b></div>
+          <div class="mod-in col gap18">
+            <div class="row gap18 mid">
+              <span class="glyph globe" aria-hidden="true"></span>
+              <div class="col gap6 fill">
+                <div class="px wrapline" data-cell="7">PHOTOS IN A MINUTE</div>
+                <div class="px dim" data-cell="3">PRINTED ON THE SPOT</div>
+              </div>
+            </div>
+            <div class="specrows">
+              <div class="r"><span class="k">SUBJECT</span><span class="v">PHOTOBOOTH</span></div>
+              <div class="r"><span class="k">TYPE</span><span class="v">LABEL SYSTEM EXP</span></div>
+              <div class="r"><span class="k">NO</span><span class="v" id="attract-no">#005</span></div>
+            </div>
+            <span class="grow"></span>
+            <button class="btn solid huge" data-act="start">
+              <span class="px" data-cell="7">TAP TO START</span></button>
+            <div class="row gap10 mid" id="install-hint" hidden>
+              <span class="chip lav"></span>
+              <span class="px dim" data-cell="2">SHARE &gt; ADD TO HOME SCREEN FOR FULL SCREEN</span>
             </div>
           </div>
-          <div class="hr"></div>
-          <button class="btn solid huge" data-act="start">
-            <span class="px" data-cell="7">TAP TO START</span></button>
-          <div class="row gap10 mid" id="install-hint" hidden>
-            <span class="chip lav"></span>
-            <span class="px dim" data-cell="3">SHARE &gt; ADD TO HOME SCREEN FOR FULL SCREEN</span>
+        </div>
+      </div>
+
+      <div class="sheet-side">
+        <div class="mod cell-dark">
+          <div class="mod-in centre-x"><span class="px big-exp" data-cell="10">EXP.05</span></div>
+        </div>
+        <div class="swatchstrip" aria-hidden="true">
+          <i style="background:var(--a1)"></i><i style="background:var(--a2)"></i>
+          <i style="background:var(--a3)"></i><i style="background:var(--a4)"></i>
+          <i style="background:var(--a5)"></i>
+        </div>
+        <div class="mod">
+          <div class="mod-in specrows tightrows">
+            <div class="r"><span class="k">[A1]</span><span class="v">#9CAFD5</span></div>
+            <div class="r"><span class="k">[A3]</span><span class="v">#6684BF</span></div>
+            <div class="r"><span class="k">[A5]</span><span class="v">#37599C</span></div>
           </div>
         </div>
+        <div class="mod fill cell-cross"><span class="glyph cross" aria-hidden="true"></span></div>
+        <div class="barfield" aria-hidden="true"></div>
       </div>
     </div>
     <div class="admin-corner" data-act="admin-corner"></div>
@@ -81,40 +115,53 @@
   </section>
 
   <!-- ---------- 3 CAPTURE ---------- -->
+  <!--
+    The camera fills the stage and everything else is laid over it. A booth's
+    entire job at this moment is to show someone their own face as large as
+    the glass allows; the framed, padded module this used to sit in was
+    spending a third of the screen on chrome to say the word CAMERA.
+  -->
   <section class="screen" data-screen="capture" hidden>
-    <div class="pad col gap14">
-      <div class="mod fill">
-        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">CAMERA</b>
-          <i class="ln"></i><b class="px" data-cell="3" id="cap-count">SHOT 1 OF 4</b><i class="ln s"></i></div>
-        <div class="mod-in tight">
-          <div class="screenwell" id="viewport">
-            <video id="video" playsinline muted autoplay></video>
-            <!-- The live picture when the booth is driving a USB camera
-                 itself, which it does on tablets that will not share one.
-                 An <img> on an MJPEG stream, so the browser decodes the
-                 frames rather than shuttling them through JavaScript. -->
-            <img id="uvc" alt="" hidden>
-            <div class="grid-overlay"></div>
-            <div class="guide" id="guide"></div>
-            <!-- The countdown lives *on* the preview, not over it: a guest
-                 has to see their own face while the numbers run. -->
-            <div class="osd" id="countdown-osd" hidden>
-              <div class="cd-badge">
-                <span class="px" data-cell="2" id="cd-shot">SHOT 1 OF 4</span>
-                <span class="px" data-cell="8" id="cd-number">3</span>
-              </div>
-              <div class="cd-foot">
-                <span class="bars" id="cd-bars"></span>
-                <span class="px" data-cell="3">HOLD STILL</span>
-              </div>
-            </div>
-            <div class="cam-msg" id="cam-msg" hidden></div>
-          </div>
+    <div class="camstage" id="viewport">
+      <video id="video" playsinline muted autoplay></video>
+      <!-- The live picture when the booth is driving a USB camera itself,
+           which it does on tablets that will not share one. An <img> on an
+           MJPEG stream, so the browser decodes the frames rather than
+           shuttling them through JavaScript. -->
+      <img id="uvc" alt="" hidden>
+      <div class="grid-overlay"></div>
+      <div class="guide" id="guide"></div>
+
+      <!-- Pinned strips rather than a centred panel: nothing may cover a
+           face. Top row identifies the shot, bottom row is the progress. -->
+      <div class="cam-hud">
+        <div class="cam-strip">
+          <div class="cam-tag"><span class="px" data-cell="3">CAMERA</span></div>
+          <div class="cam-tag lightbox"><span class="px" data-cell="3" id="cap-count">SHOT 1 OF 4</span></div>
+          <div class="cam-spacer"></div>
+          <div class="cam-tag accent"><span class="px" data-cell="3">LIVE</span></div>
+        </div>
+        <div class="cam-strip">
+          <div class="cam-spacer"></div>
         </div>
       </div>
-      <div class="shotstrip" id="shotstrip"></div>
-    </div>
 
+      <!-- The countdown lives *on* the preview: a guest has to see their own
+           face while the numbers run. -->
+      <div class="osd" id="countdown-osd" hidden>
+        <div class="cd-badge">
+          <span class="px" data-cell="2" id="cd-shot">SHOT 1 OF 4</span>
+          <span class="px" data-cell="8" id="cd-number">3</span>
+        </div>
+        <div class="cd-foot">
+          <span class="bars" id="cd-bars"></span>
+          <span class="px" data-cell="3">HOLD STILL</span>
+        </div>
+      </div>
+
+      <div class="shotstrip" id="shotstrip"></div>
+      <div class="cam-msg" id="cam-msg" hidden></div>
+    </div>
   </section>
 
   <!-- ---------- 4 REVIEW ---------- -->

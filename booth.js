@@ -162,17 +162,28 @@ function pixelTextCanvas(text, cell, colour){
 
 /* Replaces the text of a .px element with its bitmap rendering. The source
  * string is kept in the dataset so the element can be re-set later. */
+/* Set a piece of display type.
+ *
+ * This used to draw a 5x7 bitmap font to a canvas, which was the whole look
+ * of the old booth. The label-system design this now wears is set in a
+ * grotesque, so the text is text again — selectable by the renderer, kerned
+ * by the browser, and legible at sizes a bitmap font could not reach.
+ *
+ * `cell` survives as a *step* on a type scale rather than a pixel size, so
+ * every call site that asked for "cell 5" still asks for the same relative
+ * weight in the hierarchy and the scale itself can be tuned in one place.
+ */
 function setPixel(node, text, cell){
   if (text !== undefined) node.dataset.text = text;
   const source = node.dataset.text !== undefined ? node.dataset.text : node.textContent;
   node.dataset.text = source;
-  node.textContent = '';
-  node.appendChild(pixelTextCanvas(source, cell || +(node.dataset.cell || 4)));
+  node.textContent = source;
+  node.style.setProperty('--step', cell || +(node.dataset.cell || 4));
 }
 
 function paintPixelText(root){
   (root || document).querySelectorAll('.px').forEach(node => {
-    if (node.dataset.text !== undefined && node.firstElementChild) return;
+    if (node.dataset.text !== undefined && node.style.getPropertyValue('--step')) return;
     setPixel(node);
   });
 }
