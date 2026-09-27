@@ -2766,14 +2766,13 @@ async function renderAdmin(){
   // A sticker printer reached from a browser is a different problem from one
   // reached over Bluetooth, and the answer is not the same.
   if (currentMedia().thermal && !currentMedia().flow && !NATIVE) {
-    printRows.push(note('warn',
-      'Label paper is selected. This route prints through the system print ' +
-      'dialog, so the printer has to be one the device itself can see — an ' +
-      'AirPrint or Mopria printer, or one whose own driver is installed. A ' +
-      'USB or Bluetooth-only waybill printer is usually neither, and will not ' +
-      'be in the list. Reaching one of those means the Android build and ' +
-      'PRINT MODE set to BLUETOOTH, or printing from a computer that has the ' +
-      'printer\u2019s driver.'));
+    printRows.push(note('info',
+      'Label paper is selected. On a Mac or PC this prints to a USB sticker ' +
+      'printer normally, once its driver is installed and its paper size is ' +
+      'set to match PAPER above — and silently, with no window, through ' +
+      'kiosk-chrome.sh. On a tablet it will not: neither iPadOS nor Android ' +
+      'lets a web page reach a USB printer, and a Bluetooth-only one needs ' +
+      'the Android build with PRINT MODE set to BLUETOOTH.'));
   }
   parts.push(section('PRINT', 'printer', printRows));
 
@@ -2922,11 +2921,10 @@ function labelPrinterNote(){
   return 'Label paper is selected. Bluetooth here speaks ESC/POS raster, ' +
          'which many waybill printers understand and some do not — the ones ' +
          'that only speak TSPL or CPCL will answer and print nothing, or feed ' +
-         'blank stickers. Test-print one from the layout editor before an ' +
-         'event rather than finding out in front of a queue. If it comes out ' +
-         'blank, switch PRINT MODE to SYSTEM DIALOG and print through the ' +
-         'printer\u2019s own Android driver instead. Set HEAD WIDTH to 104MM / 832 ' +
-         'for a 4-inch head.';
+         'blank stickers. The VOZY U9 is one of those: it reports TSPL and ' +
+         'will not take ESC/POS, so on a tablet it needs PRINT MODE set to ' +
+         'SYSTEM DIALOG and its own Android driver. Plugged into a Mac or PC ' +
+         'it prints normally. Set HEAD WIDTH to 104MM / 832 for a 4-inch head.';
 }
 
 /* What is actually on the USB port, as the operator console reads it. */
