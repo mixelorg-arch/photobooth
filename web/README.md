@@ -80,17 +80,71 @@ whatever PHOTO TONE says. The preview is then honest about what will burn.
 **Getting the sheet to the printer is the hard part**, and the answer differs
 by route:
 
-* **Android, PRINT MODE = BLUETOOTH.** The booth dithers to 1 bit and sends
-  ESC/POS raster. Many waybill printers understand that; the ones that only
-  speak TSPL or CPCL will answer and print nothing, or feed blank stickers.
-  Set HEAD WIDTH to `104MM / 832`. **Test-print from the layout editor before
-  an event**, not in front of a queue.
+* **A Mac or PC over USB — the route that works.** Install the printer's
+  driver, set its paper size, make it the default, and run `./kiosk-chrome.sh`.
+  Chrome's `--kiosk-printing` sends every job straight there with no window.
+  See below.
 * **Android, PRINT MODE = SYSTEM DIALOG.** Goes through the printer's own
-  Android driver, which is the fallback when ESC/POS comes out blank.
-* **iPad or a browser.** Prints through the system print dialog, so the
-  printer has to be one the device can already see — AirPrint, Mopria, or a
-  driver that is installed. A USB or Bluetooth-only waybill printer is usually
-  none of those and simply will not appear in the list.
+  Android driver. The fallback on a tablet.
+* **Android, PRINT MODE = BLUETOOTH.** The only silent path on a tablet: the
+  booth dithers to 1 bit and sends ESC/POS raster, with HEAD WIDTH at
+  `104MM / 832`. This only works on a printer that speaks ESC/POS. **The VOZY
+  U9 does not** — see below. Test-print from the layout editor before an
+  event, not in front of a queue.
+* **iPad.** Not possible over USB. iPadOS has no USB printing at all: unlike
+  cameras, there is no USB printer class exposed to apps, and AirPrint is
+  network-only.
+
+### The VOZY U9, specifically
+
+Plugged in over USB it identifies itself as:
+
+```
+MANUFACTURER:;COMMANDSET:TSPL;MDL:LABEL-9X00;CLASS:PRINTER;ACTIVE COMMAND:TSPL
+```
+
+**`COMMANDSET:TSPL`** settles a question worth knowing before an event: it
+speaks TSPL, not ESC/POS, so the Bluetooth path above would connect, report
+success and feed blank stickers. On a tablet it needs SYSTEM DIALOG and the
+vendor's own Android driver. On a Mac it is straightforward.
+
+On macOS the driver ships as `Label_TSPL-9X00.ppd` under
+`/Library/Printers/PPDs/Contents/Resources/`, with the vendor's
+`rastertodlabel` filter and `100mmx150mm` as its default paper — the same size
+as the booth's `100 x 150 mm Label` paper. Note that macOS may auto-create the
+queue with a **Generic PostScript** driver instead, which offers only Letter
+and A4 and sends PostScript to a printer that cannot read it. Check with:
+
+```
+lpoptions -p <queue> | tr ' ' '\n' | grep make-and-model
+```
+
+If it says `Generic PostScript Printer`, rebind it:
+
+```
+lpadmin -p <queue> -P /Library/Printers/PPDs/Contents/Resources/Label_TSPL-9X00.ppd.gz
+lpoptions -p <queue> -o PageSize=100mmx150mm -o Resolution=203dpi
+```
+
+Verified end to end on this Mac: the booth renders 799 x 1199, the chain
+produces a 283 x 425 pt page and a **798 x 1198 dot raster at 203 dpi** — one
+dot of rounding, a tenth of a millimetre, and no resampling worth the name.
+
+### Silent printing to it
+
+`./kiosk-chrome.sh` reports the printer and paper it is about to use and
+refuses to guess, because `--kiosk-printing` has no dialog to catch a mistake:
+
+```
+./kiosk-chrome.sh -l                  list printers, show the default
+./kiosk-chrome.sh -p _LABEL_9X00      make it the default, then launch
+./kiosk-chrome.sh -p Canon_SELPHY_CP1500
+```
+
+One default printer means one silent destination. Switching the booth between
+stickers and SELPHY postcards means switching the default too — change PAPER in
+Admin and the printer with `-p` together, or a 100 x 150 sticker design will go
+to the postcard printer.
 
 ## Camera permission on an iPad
 
