@@ -30,7 +30,13 @@
 # Safari has no equivalent. Use Chrome for the booth.
 set -euo pipefail
 
-URL="http://localhost:8815"
+# The deployed copy. Served over HTTPS, so the camera works, and its service
+# worker caches the whole app on first load — which is what a venue with no
+# wifi needs. Used whenever no local server is listening, because a booth
+# pointed at a dead localhost shows Chrome's error page and nothing else.
+LIVE="https://mixelorg-arch.github.io/photobooth/"
+LOCAL="http://localhost:8815"
+URL=""
 WANT=""
 
 while [ $# -gt 0 ]; do
@@ -53,6 +59,23 @@ PROFILE="${TMPDIR:-/tmp}/photobooth-kiosk-profile"
 if [ ! -x "$CHROME" ]; then
     echo "Google Chrome is not installed at $CHROME" >&2
     exit 1
+fi
+
+# Checked before anything else: a running Chrome makes the rest pointless,
+# and there is no sense reporting a printer for a launch that cannot happen.
+if pgrep -x "Google Chrome" >/dev/null; then
+    echo "Chrome is already running — quit it first (Cmd-Q), then run this again." >&2
+    echo "A running instance ignores --kiosk-printing and the dialog will appear." >&2
+    exit 1
+fi
+
+# Where the booth is served from, unless one was named on the command line.
+if [ -z "$URL" ]; then
+    if nc -z localhost 8815 2>/dev/null; then
+        URL="$LOCAL"
+    else
+        URL="$LIVE"
+    fi
 fi
 
 # ---- the printer ------------------------------------------------------
@@ -81,17 +104,11 @@ PAPER=$(lpoptions -p "$DEFAULT" -l 2>/dev/null \
 
 echo "Printer : $DEFAULT"
 echo "Paper   : ${PAPER:-<none set — the driver will pick>}"
-echo "Booth   : $URL"
+echo "Booth   : $URL$([ "$URL" = "$LIVE" ] && echo "   (deployed copy — no local server running)")"
 echo
 echo "Every PRINT goes here with no dialog. Check the paper matches the"
 echo "booth's Admin > PRINT > PAPER before the doors open."
 echo
-
-if pgrep -x "Google Chrome" >/dev/null; then
-    echo "Chrome is already running — quit it first (Cmd-Q)." >&2
-    echo "A running instance ignores --kiosk-printing and the dialog will appear." >&2
-    exit 1
-fi
 
 # A separate profile so the kiosk flags never touch his normal browsing.
 mkdir -p "$PROFILE"
