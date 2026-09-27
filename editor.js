@@ -967,7 +967,8 @@ function edTestPrint(){
   const media = edMedia();
   registerCanvasLayout(ED.tpl);
   const sheet = renderCanvas(edSamplePhotos(), ED.tpl, media, edBrand(), 1, {});
-  const dataURL = media.flow ? sheet.toDataURL('image/png') : sheet.toDataURL('image/jpeg', 0.95);
+  // Same rule as a guest's print: a one-bit sheet must not go through JPEG.
+  const dataURL = sheetDataURL(sheet, media);
   if (NATIVE) {
     if (settings.printMode === 'thermal') {
       ED.testPrinting = true;
