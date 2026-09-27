@@ -2912,6 +2912,12 @@ async function renderAdmin(){
     note(settings.quickPrint ? 'info' : 'warn', settings.quickPrint
       ? 'Hidden: the guest sees their print and one PRINT button. No copy count, no spec, no save. COPIES PER PRINT above is what comes out.'
       : 'Shown: the guest picks a copy count and sees the sheet spec before printing.'),
+    ...(IPADOS ? [note('warn',
+      'On an iPad, PRINT is never the last tap. iOS raises its own print sheet ' +
+      'and nothing can suppress it, so a guest still has to choose the printer ' +
+      'the first time and press Print every time. iOS remembers the printer, so ' +
+      'it is one tap after the first. A booth nobody is minding wants the Mac.')]
+      : []),
   ];
   if (NATIVE) {
     // On the tablet the mode is a real choice, not an inference.
@@ -2925,19 +2931,15 @@ async function renderAdmin(){
         '<div class="seg"><button class="' + (silent ? 'on' : '') + '">SILENT</button>' +
         '<button class="' + (silent ? '' : 'on') + '">DIALOG</button></div>'));
     printRows.push(note(silent ? 'info' : 'warn', silent
-      ? 'Silent: pressing PRINT sends the sheet straight to the default printer, no window. Make the SELPHY the default printer and set its paper to borderless 4x6 — Chrome uses those defaults and asks nothing.'
+      ? 'Silent: pressing PRINT sends the sheet straight to the default printer, no window. Set that printer\u2019s paper to match PAPER above — Chrome uses the driver\u2019s defaults and asks nothing. kiosk-chrome.sh -p <name> picks the printer and reports what it will use.'
+      : IPADOS
+      ? 'The iOS print sheet will appear on every print and cannot be suppressed \u2014 not by this booth, not by any app. Printing with no tap at all means running the booth on a computer instead.'
       : 'A print dialog will appear. To print silently, quit Chrome and run ./kiosk-chrome.sh — it relaunches Chrome with --kiosk-printing, which is the only way a browser can print without a window. Safari cannot do it at all.'));
   }
   // A sticker printer reached from a browser is a different problem from one
   // reached over Bluetooth, and the answer is not the same.
   if (currentMedia().thermal && !currentMedia().flow && !NATIVE) {
-    printRows.push(note('info',
-      'Label paper is selected. On a Mac or PC this prints to a USB sticker ' +
-      'printer normally, once its driver is installed and its paper size is ' +
-      'set to match PAPER above — and silently, with no window, through ' +
-      'kiosk-chrome.sh. On a tablet it will not: neither iPadOS nor Android ' +
-      'lets a web page reach a USB printer, and a Bluetooth-only one needs ' +
-      'the Android build with PRINT MODE set to BLUETOOTH.'));
+    printRows.push(note('info', labelRouteNote()));
   }
   parts.push(section('PRINT', 'printer', printRows));
 
@@ -3093,6 +3095,32 @@ function thermalSection(){
   }
   if (currentMedia().thermal && !currentMedia().flow) rows.push(note('warn', labelPrinterNote()));
   return section('BLUETOOTH PRINTER', 'printer', rows);
+}
+
+/* How a sticker printer is reached from whatever the booth is running on.
+ *
+ * Three different answers, and the iPad's is the one people expect to be
+ * wrong about, so it says what cannot be done before what can.
+ */
+function labelRouteNote(){
+  if (IPADOS) {
+    return 'Label paper is selected. An iPad cannot print to a USB printer, ' +
+           'with or without a dock: iPadOS installs no printer drivers and ' +
+           'exposes no USB printer class, so no app can reach one. What does ' +
+           'work is plugging the printer into a Mac on the same wifi and ' +
+           'turning on printer sharing — macOS then advertises it to iPadOS ' +
+           'as an AirPrint printer and it appears in the print sheet. Expect ' +
+           'one tap per print: iOS always raises that sheet and no app, native ' +
+           'or web, can suppress it. For printing with no tap at all, run the ' +
+           'booth on the Mac itself with kiosk-chrome.sh.';
+  }
+  return 'Label paper is selected. On a Mac or PC this prints to a USB ' +
+         'sticker printer normally, once its driver is installed and its ' +
+         'paper size is set to match PAPER above — and silently, with no ' +
+         'window, through kiosk-chrome.sh. On a tablet it will not: neither ' +
+         'iPadOS nor Android lets a web page reach a USB printer, and a ' +
+         'Bluetooth-only one needs the Android build with PRINT MODE set to ' +
+         'BLUETOOTH.';
 }
 
 /* What a sticker printer needs, said once and in one place.
