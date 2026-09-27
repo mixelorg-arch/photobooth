@@ -1,643 +1,582 @@
-/* PHOTOBOOTH — the module-panel look.
+/* PHOTOBOOTH — the label-system look.
  *
- * The whole aesthetic is three rules:
- *   1. White paper, black ink, heavy strokes. Every edge is a 4px black
- *      rule. No bevels, no gradients, no shadows.
- *   2. Everything lives in a labelled module: the label breaks the top rule
- *      and a value sits at its right end, the way a hardware panel is
- *      silkscreened.
- *   3. Colour is a fill, never a stroke, and always muted. Four accents,
- *      used sparingly — a screen should read black-and-white first.
+ * Built from a shipping-label / spec-sheet reference. Four rules carry it:
  *
- * Type is a real 5x7 bitmap font drawn to canvas (see booth.js). Small
- * running text falls back to heavy monospace.
+ *   1. Black ground, modules on top. Nothing floats: every element is a
+ *      rectangle with a 3px black edge, butted against its neighbours so the
+ *      black shows through as the gutter. No radii, no shadows, no gradients.
+ *   2. Two panel values and only two — LIGHT (#EDEDED, black ink) and DARK
+ *      (#0B0B0B, white ink). Alternating them is what gives the grid its
+ *      rhythm; a third grey would turn it to mush.
+ *   3. Every module is labelled like a form: a caps label on the left, a
+ *      right-aligned value, a rule under them. Even when the value is
+ *      decorative, the shape reads as a record of something.
+ *   4. Colour is a fill and appears at most twice per screen. Blue is the
+ *      system accent, yellow marks the one thing to press, red is only ever
+ *      a fault.
+ *
+ * Type is a grotesque in caps for anything structural, with a mono reserved
+ * for running text and numbers that need to line up.
  */
 :root{
+  --ink:#0B0B0B;           /* the ground, and every rule */
+  --panel:#EDEDED;         /* LIGHT panel */
+  --panel-2:#F7F7F7;       /* a light panel that needs to sit above another */
   --paper:#FFFFFF;
-  --ink:#111111;
-  --dim:#8A8A8A;
-  --hair:#D5D5D5;
+  --dark:#131313;          /* DARK panel */
+  --dark-2:#1C1C1C;
+  --dim:#7E7E7E;           /* secondary ink on light */
+  --dim-on-dark:#9A9A9A;
+  --hair:#C8C8C8;
 
-  --lavender:#A9A2CE;
-  --salmon:#C97F7F;
-  --sage:#A8BEB2;
-  --slate:#9BA3A3;
+  /* The blue ramp from the reference, A1 lightest to A5 darkest. */
+  --a1:#9CAFD5; --a2:#8099CB; --a3:#6684BF; --a4:#4C6CAC; --a5:#37599C;
+  --blue:#2B4EAE;
+  --yellow:#F5D400;
+  --red:#E01B1B;
 
-  --screen:#2B2B2B;      /* the dark display panel */
-  --screen-grid:#4C4C4C;
+  /* Kept so existing markup that names an accent still resolves. */
+  --lavender:var(--a3);
+  --salmon:var(--red);
+  --sage:var(--a2);
+  --slate:var(--dim);
 
-  --rule:4px;
-  --rule-thin:3px;
-  --touch:64px;
+  --screen:#101010;        /* the camera well */
+  --screen-grid:#2A2A2A;
+
+  --rule:3px;
+  --rule-thin:2px;
+  --touch:62px;
+  --sans:"Helvetica Neue",Helvetica,Arial,"Inter",system-ui,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --step-unit:4.6px;       /* the type scale: font-size = step x this */
 }
-*{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;
-   -webkit-touch-callout:none}
-html,body{height:100%;overflow:hidden;background:var(--paper);overscroll-behavior:none}
-body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
-     /* No double-tap zoom, no long-press menu on a photo or the video. */
-     touch-action:manipulation}
 
-/* The framed panel sits inside the safe area, so the black rule reads as the
-   edge of the device rather than disappearing under a notch or a home
-   indicator. On anything without insets these all resolve to 0. */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none}
+html,body{height:100%;overflow:hidden;background:var(--ink);overscroll-behavior:none}
+body{font-family:var(--sans);color:var(--ink);touch-action:manipulation;
+     -webkit-font-smoothing:antialiased}
+
+/* Display type. `--step` comes from the markup's data-cell, set by setPixel. */
+.px{font-family:var(--sans);font-weight:800;letter-spacing:.005em;
+    text-transform:uppercase;line-height:1.02;
+    font-size:calc(var(--step,4) * var(--step-unit));
+    white-space:nowrap}
+.px.dim,.dim{color:var(--dim)}
+.mono{font-family:var(--mono);font-size:13px;line-height:1.5;letter-spacing:-.01em;
+      text-transform:none;font-weight:400}
+
+/* The frame sits inside the safe area so the black reads as the edge of the
+   device rather than vanishing under a notch or a home indicator. */
 .app{position:fixed;
      top:env(safe-area-inset-top);
      left:env(safe-area-inset-left);
      right:env(safe-area-inset-right);
-     /* Height, not `bottom:0`. On iOS Safari the address bar and tab bar
-        overlay a fixed element anchored to the bottom, which quietly hides
-        the footer and the last row of buttons. `dvh` is the dynamic viewport
-        — it shrinks and grows with those bars — with `vh` left as the
-        fallback for anything that does not know the unit. */
+     /* Height rather than bottom:0 — on iOS Safari the bars overlay a fixed
+        element anchored to the bottom and quietly eat the footer. */
      height:calc(100vh  - env(safe-area-inset-top) - env(safe-area-inset-bottom));
      height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-     display:flex;flex-direction:column;background:var(--paper);
-     border:var(--rule) solid var(--ink)}
+     display:flex;flex-direction:column;background:var(--ink);gap:var(--rule);
+     padding:var(--rule)}
 .stage{position:relative;flex:1;min-height:0}
-.screen{position:absolute;inset:0;display:flex;flex-direction:column}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;gap:var(--rule)}
 .screen[hidden]{display:none}
 
-/* ---------- header ---------- */
-.hdr{flex:none;height:78px;display:flex;align-items:center;gap:12px;padding:0 12px;
-     border-bottom:var(--rule) solid var(--ink)}
-.hdr-back{width:52px;height:52px;flex:none;border:var(--rule) solid var(--ink);background:var(--paper);
-          display:grid;place-items:center;cursor:pointer}
-.hdr-back:active{background:var(--ink)}
-.hdr-back:active canvas{filter:invert(1)}
-.hdr-back[hidden]{visibility:hidden}
-.hdr-badge{width:52px;height:52px;flex:none;border:var(--rule) solid var(--ink);
-           display:grid;place-items:center}
-/* The title yields before the status value does — a clipped step counter is
-   worse than a slightly smaller wordmark. */
-.hdr-title{flex:0 1 auto;min-width:0;overflow:hidden}
-.hdr-val{flex:none;display:flex;justify-content:flex-end;white-space:nowrap}
-.hatch{min-width:18px}
+/* ==================================================================== *
+ * Header and footer — the two fixed label strips.
+ * ==================================================================== */
+.hdr{display:flex;align-items:stretch;gap:var(--rule);height:54px;flex:none}
+.hdr-back{width:54px;flex:none;background:var(--dark);color:var(--paper);
+          border:0;display:grid;place-items:center;cursor:pointer}
+.hdr-back[hidden]{display:none}
+.hdr-back .px{font-size:20px}
+.hdr-title{flex:none;background:var(--dark);color:var(--paper);
+           display:flex;align-items:center;padding:0 18px;font-size:22px !important;
+           letter-spacing:-.02em}
+.hdr-val{flex:none;background:var(--panel);display:flex;align-items:center;
+         padding:0 16px;font-size:12px !important}
+/* The hatch is the barcode field: it fills whatever space is left, which is
+   what makes the header read as a label rather than a title bar. */
+.hatch{flex:1;min-width:24px;background:var(--panel);
+       background-image:repeating-linear-gradient(90deg,
+         var(--ink) 0 2px, transparent 2px 4px, var(--ink) 4px 5px, transparent 5px 9px,
+         var(--ink) 9px 12px, transparent 12px 14px, var(--ink) 14px 15px, transparent 15px 20px);
+       background-size:20px 100%}
 
-/* The stacked-line hatch either side of the title. Pure decoration, and the
-   thing that makes the header read as a silkscreened panel. */
-.hatch{flex:1;min-width:24px;height:34px;
-       background:repeating-linear-gradient(to bottom,
-         var(--ink) 0 var(--rule-thin), transparent var(--rule-thin) 9px)}
+.ftr{display:flex;align-items:center;gap:14px;height:34px;flex:none;
+     background:var(--dark);color:var(--paper);padding:0 14px}
+.ftr .px{font-size:11px !important;color:var(--paper)}
+.ftr .lead{flex:1;height:1px;
+           background:repeating-linear-gradient(90deg,var(--dim-on-dark) 0 4px,transparent 4px 8px)}
+.meter{width:110px;height:12px;border:2px solid var(--paper);flex:none}
+.meter i{display:block;height:100%;width:30%;background:var(--paper)}
 
-/* ---------- footer ---------- */
-.ftr{flex:none;height:52px;display:flex;align-items:center;gap:14px;padding:0 14px;
-     border-top:var(--rule) solid var(--ink)}
-.lead{flex:1;height:0;border-top:var(--rule-thin) dashed var(--hair)}
-.meter{width:150px;height:26px;flex:none;border:var(--rule-thin) solid var(--ink);padding:3px}
-.meter i{display:block;height:100%;width:35%;background:var(--sage)}
+/* ==================================================================== *
+ * Modules — the unit everything is built from.
+ * ==================================================================== */
+.pad{flex:1;min-height:0;display:flex;gap:var(--rule);padding:0}
+.centre{flex:1;min-height:0;display:grid;place-items:center;padding:var(--rule)}
+.mod{background:var(--panel);display:flex;flex-direction:column;min-height:0;
+     border:var(--rule) solid var(--ink)}
+.mod[hidden]{display:none}
+.mod.wide{width:min(720px,100%)}
+.mod.fill{flex:1;min-height:0}
+.mod.dialog{width:min(640px,100%)}
+.mod.alarm{border-color:var(--red)}
+.mod.alarm .mod-top{background:var(--red);color:var(--paper)}
 
-/* ---------- module frame ---------- */
-.mod{border:var(--rule) solid var(--ink);border-top:0;background:var(--paper);
-     display:flex;flex-direction:column;min-height:0}
-.mod.fill{flex:1}
-.mod.wide{width:min(900px,92%)}
-.mod.dialog{width:min(760px,90%);background:var(--paper)}
-.mod.alarm{border-color:var(--salmon)}
-.mod.alarm .mod-top .ln{border-top-color:var(--salmon)}
+/* The label strip. Black bar, caps label left, value right — the shape the
+   whole reference is built on. The old hairline rules are gone; the bar does
+   that job now, so `.ln` is kept only so existing markup does not break. */
+.mod-top{display:flex;align-items:center;gap:12px;flex:none;height:38px;
+         padding:0 14px;background:var(--dark);color:var(--paper)}
+.mod-top b{font-weight:800;text-transform:uppercase;letter-spacing:.02em;
+           font-size:13px !important;white-space:nowrap}
+.mod-top b:last-of-type{margin-left:auto;color:var(--dim-on-dark)}
+.mod-top .ln{display:none}
+.mod-in{flex:1;min-height:0;padding:18px;display:flex;flex-direction:column}
+.mod-in.tight{padding:var(--rule)}
+.mod-in.scroll{overflow:auto;-webkit-overflow-scrolling:touch}
+.mod-in.col{flex-direction:column}
 
-/* The label row IS the top rule: stub, name, long rule, value, stub. */
-.mod-top{display:flex;align-items:center;gap:10px;margin:0 calc(var(--rule) * -1);padding:0 2px;flex:none}
-.mod-top .ln{height:0;border-top:var(--rule) solid var(--ink);flex:1;min-width:14px}
-.mod-top .ln.s{flex:0 0 18px}
-/* The legend name shrinks before the rule does — a clipped module title is
-   the one thing that breaks the silkscreen illusion. */
-.mod-top b{flex:0 1 auto;min-width:0;display:flex;align-items:center;overflow:hidden}
-
-.mod-in{padding:20px;display:flex;flex-direction:column;gap:20px;flex:1;min-height:0}
-.mod-in.tight{padding:10px;gap:10px}
-.mod-in.scroll{overflow-y:auto;overscroll-behavior:contain}
-
-/* banner: a legend row with no box under it, for a screen heading */
-.banner{flex:none;display:flex;align-items:center;gap:14px;padding-bottom:4px}
-
-/* ---------- layout helpers ---------- */
-.row{display:flex;flex-direction:row;min-width:0}
+.row{display:flex;align-items:flex-start}
+.row.mid{align-items:center}
 .row.wrap{flex-wrap:wrap}
-.col{display:flex;flex-direction:column;min-height:0}
-.mid{align-items:center}
-.centre-x{align-items:center}
+.col{display:flex;flex-direction:column}
 .fill{flex:1;min-width:0;min-height:0}
 .grow{flex:1}
-.gap10{gap:10px}.gap12{gap:12px}.gap14{gap:14px}.gap16{gap:16px}
-.gap18{gap:18px}.gap20{gap:20px}.gap24{gap:24px}
-.pad{flex:1;min-height:0;padding:clamp(14px,2.2vw,26px);display:flex}
-.centre{flex:1;display:grid;place-items:center;padding:clamp(14px,2.6vw,32px)}
-.hr{height:0;flex:none;border-top:var(--rule-thin) solid var(--ink)}
-.dim canvas{opacity:.42}
-.mono{font-family:var(--mono);font-size:14px;line-height:1.6;letter-spacing:.02em}
-.mono.dim{color:var(--dim)}
+.gap10{gap:10px}.gap12{gap:12px}.gap14{gap:14px}.gap18{gap:18px}
+.gap20{gap:20px}.gap24{gap:24px}
+.hr{height:var(--rule-thin);background:var(--ink);flex:none}
+.lead{flex:1;height:1px;align-self:center;
+      background:repeating-linear-gradient(90deg,var(--hair) 0 4px,transparent 4px 8px)}
 
-/* ---------- buttons ---------- */
-.btn{min-height:var(--touch);padding:0 clamp(10px,1.8vw,22px);border:var(--rule) solid var(--ink);background:var(--paper);
-     display:flex;align-items:center;justify-content:center;gap:12px;cursor:pointer}
-.btn:active{background:var(--ink)}
-.btn:active canvas{filter:invert(1)}
-.btn.solid{background:var(--ink)}
-.btn.solid canvas{filter:invert(1)}
-.btn.solid:active{background:var(--paper)}
-.btn.solid:active canvas{filter:none}
-.btn.huge{min-height:118px}
-.btn.sqr{width:132px;height:132px;flex:none;padding:0}
-.btn.tint-salmon{background:var(--salmon)}
-.btn.tint-sage{background:var(--sage)}
-.btn:disabled{background:repeating-linear-gradient(45deg,
-                var(--paper) 0 6px, var(--hair) 6px 12px);cursor:default}
-.btn:disabled canvas{opacity:.35}
+/* A banner is a module header standing on its own. */
+.banner{display:flex;align-items:center;gap:12px;flex:none;height:40px;padding:0 14px;
+        background:var(--dark);color:var(--paper);border:var(--rule) solid var(--ink)}
+.banner .px{font-size:13px !important}
+.banner .lead{background:repeating-linear-gradient(90deg,var(--dim-on-dark) 0 4px,transparent 4px 8px)}
 
-/* ---------- the dark display panel ---------- */
-.screenwell{position:relative;flex:1;min-height:0;background:var(--screen);overflow:hidden;
-            border:var(--rule) solid var(--ink)}
-#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-       pointer-events:none}
-#video.mirror{transform:scaleX(-1)}
-/* The directly-driven camera sits exactly where the video does. */
-#uvc{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-     pointer-events:none;background:var(--screen)}
-#uvc.mirror{transform:scaleX(-1)}
-#uvc[hidden]{display:none}
-/* Dashed grid, exactly the reference's waveform panel. */
-.grid-overlay{position:absolute;inset:0;pointer-events:none;opacity:.5;
-  background:
-    repeating-linear-gradient(to right, transparent 0 calc(12.5% - 2px),
-      var(--screen-grid) calc(12.5% - 2px) 12.5%),
-    repeating-linear-gradient(to bottom, transparent 0 calc(25% - 2px),
-      var(--screen-grid) calc(25% - 2px) 25%);
-  mask-image:repeating-linear-gradient(to bottom, #000 0 7px, transparent 7px 13px);
-  -webkit-mask-image:repeating-linear-gradient(to bottom, #000 0 7px, transparent 7px 13px)}
-.guide{position:absolute;top:8px;bottom:8px;left:50%;transform:translateX(-50%);pointer-events:none;
-       outline:var(--rule-thin) solid var(--lavender);box-shadow:0 0 0 4000px rgba(17,17,17,.55)}
-.guide[hidden]{display:none}
-/* ---------- countdown OSD, drawn over the live preview ---------- */
-/* Small and cornered on purpose. The old full-screen dialog hid the guest
-   from themselves for the whole count, which is the one moment they most
-   need the mirror. */
-.osd{position:absolute;inset:0;z-index:6;pointer-events:none}
-.osd[hidden]{display:none}
-.cd-badge{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;
-          align-items:center;gap:5px;padding:8px 12px 6px;
-          background:var(--paper);border:var(--rule) solid var(--ink)}
-.cd-foot{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;
-         gap:10px;padding:5px 10px;background:var(--paper);
-         border:var(--rule) solid var(--ink)}
-.cd-foot .bars{flex:1;height:18px;border:0;padding:0;gap:2px;display:flex}
-.cd-foot .px{flex:none}
-
-.cam-msg{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:26px;text-align:center;
-         background:var(--screen);color:#EEE;font-family:var(--mono);font-size:14px;line-height:1.7;
-         white-space:pre-line}
-/* A class rule that sets `display` beats the user-agent `[hidden]` rule, so
-   every element toggled by the hidden attribute needs its own. Without this
-   the panel sat opaque over the live preview forever and a guest saw a dark
-   rectangle instead of their own face. */
-.cam-msg[hidden]{display:none}
-/* Same rule, for the two that the hidden print options toggle: a `.mod` and
-   a `.btn` both set `display`, so both would otherwise stay on screen — an
-   empty READY TO PRINT frame and a live SAVE PNG button. */
-.mod[hidden]{display:none}
+/* ==================================================================== *
+ * Controls.
+ * ==================================================================== */
+.btn{min-height:var(--touch);padding:0 22px;background:var(--panel-2);
+     border:var(--rule) solid var(--ink);color:var(--ink);cursor:pointer;
+     display:grid;place-items:center;font-family:var(--sans);flex:none}
 .btn[hidden]{display:none}
+.btn .px{font-size:15px !important}
+.btn:active{background:var(--ink);color:var(--paper)}
+.btn.fill{flex:1;min-width:0}
+.btn.sqr{width:var(--touch);padding:0}
+/* Yellow is the one thing to press. It appears once per screen, which is why
+   it works — the reference uses it exactly this way. */
+.btn.solid{background:var(--yellow);border-color:var(--ink);color:var(--ink)}
+.btn.solid:active{background:var(--ink);color:var(--yellow)}
+.btn.huge{min-height:96px}
+.btn.huge .px{font-size:30px !important}
+.btn.tint-salmon{background:var(--panel-2)}
+.btn.tint-salmon .px{color:var(--red)}
+.btn.tint-sage{background:var(--panel-2)}
 
-/* the sheet, in its own well */
-.sheetcol{flex:0 0 min(40vw,430px)}
-/* With the print options hidden the right column holds two buttons and
-   nothing else, so the print itself takes the room rather than leaving a
-   field of white beside it. */
-.screen.quick .sheetcol{flex:0 0 min(62vw,780px)}
-/* The well takes the *sheet's* aspect, so the dark ground hugs the paper.
-   Letterboxing a portrait 4x6 inside a landscape well threw away more than
-   half the space on a phone, which is what made the proof look like a
-   postage stamp. `--sheet-aspect` is set from the chosen media. */
-.sheetwell{position:relative;flex:1;min-height:0;min-width:0;
-           aspect-ratio:var(--sheet-aspect, 2 / 3);
-           height:100%;width:auto;max-width:100%;margin-inline:auto;
-           background:var(--screen);border:var(--rule) solid var(--ink)}
-.sheetwell canvas{position:absolute;inset:10px;width:calc(100% - 20px);height:calc(100% - 20px);
-                  object-fit:contain}
+.stepper{display:flex;align-items:stretch;gap:var(--rule);flex:none}
+.bigbox{flex:1;background:var(--dark);color:var(--paper);display:grid;place-items:center;
+        min-height:132px;font-size:76px !important;letter-spacing:-.03em}
+.chip{width:12px;height:12px;background:var(--blue);flex:none}
+.chip.lav{background:var(--blue)}
+.warn{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--red);
+      color:var(--paper);border:var(--rule) solid var(--ink)}
+.warn .px{color:var(--paper);font-size:12px !important}
+.bars{display:flex;gap:3px;flex:1;height:14px;align-items:stretch}
+.bars i{flex:1;background:var(--hair)}
+.bars i.on{background:var(--blue)}
+.numeral{font-family:var(--sans);font-weight:800}
 
-/* ---------- shot strip ---------- */
-.shotstrip{flex:none;height:44px;display:flex;gap:0;border:var(--rule) solid var(--ink)}
-.shotstrip i{flex:1;background:var(--paper);border-right:var(--rule-thin) dashed var(--ink)}
-.shotstrip i:last-child{border-right:0}
-.shotstrip i.done{background:var(--lavender)}
-.shotstrip i.live{background:repeating-linear-gradient(45deg,
-                    var(--paper) 0 7px, var(--salmon) 7px 14px)}
+/* ==================================================================== *
+ * Layout tiles.
+ * ==================================================================== */
+.tilegrid{display:grid;gap:var(--rule);grid-template-columns:repeat(3,1fr);
+          overflow:auto;align-content:start;padding:0}
+.tile{background:var(--panel);border:var(--rule) solid var(--ink);cursor:pointer;
+      display:flex;flex-direction:column;min-height:0;padding:0;font-family:var(--sans)}
+.tile .pv{flex:1;min-height:0;display:grid;place-items:center;padding:12px;
+          background:var(--panel-2)}
+.tile .pv canvas{max-width:100%;max-height:100%;display:block;
+                 border:2px solid var(--ink);background:#fff}
+.tile .t{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;flex:none;
+         background:var(--dark);color:var(--paper)}
+.tile .t .k{font-size:12px !important}
+.tile .t .v{margin-left:auto;font-size:11px !important;color:var(--dim-on-dark)}
+.tile.sel{border-color:var(--blue)}
+.tile.sel .t{background:var(--blue)}
+.tile.sel .v{color:var(--paper)}
 
-/* ---------- modal ---------- */
-.scrim{position:absolute;inset:0;z-index:30;display:grid;place-items:center;padding:clamp(14px,3vw,36px);
-       background:repeating-linear-gradient(45deg,
-         rgba(255,255,255,.93) 0 10px, rgba(17,17,17,.09) 10px 20px)}
-.scrim[hidden]{display:none}
-.numeral{justify-content:center;width:100%}
+/* ==================================================================== *
+ * The camera — full bleed, everything else laid over it.
+ *
+ * The preview is not a module here. A booth's whole job at this moment is to
+ * show someone their own face as large as the glass allows, and a framed
+ * well inside a padded module was spending a third of the screen on chrome.
+ * So the video fills the stage edge to edge and the readouts sit on top of
+ * it, in the inverted panels the rest of the design already uses.
+ * ==================================================================== */
+.screen[data-screen="capture"]{padding:0;gap:0}
+.camstage{position:absolute;inset:0;background:var(--screen);overflow:hidden}
+.camstage video,.camstage img#uvc{position:absolute;inset:0;width:100%;height:100%;
+                                  object-fit:cover;display:block;background:var(--screen)}
+.camstage img#uvc[hidden]{display:none}
+video.mirror,img#uvc.mirror{transform:scaleX(-1)}
+.screenwell{position:absolute;inset:0}
 
-/* segmented bar, like the reference's crossover fills */
-.bars{flex:none;height:38px;width:100%;display:flex;gap:3px;padding:4px;
-      border:var(--rule) solid var(--ink)}
-.bars i{flex:1;background:transparent}
-.bars{--bar:var(--lavender)}
-.bars i.on{background:var(--bar)}
+.grid-overlay{position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--screen-grid) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--screen-grid) 1px,transparent 1px);
+  background-size:48px 48px;opacity:.35}
+/* The crop the paper will actually take.
+ *
+ * Sized by height and centred, with the aspect ratio set from the layout's
+ * cell — so the strip you see is exactly the slice that gets printed. The
+ * huge box-shadow is the scrim: it darkens everything outside the crop
+ * without needing a second element to do it. Anchored off the HUD strips so
+ * it never sits under them. */
+.guide{position:absolute;top:52px;bottom:52px;left:50%;transform:translateX(-50%);
+       pointer-events:none;border:2px solid rgba(255,255,255,.9);
+       box-shadow:0 0 0 9999px rgba(0,0,0,.42)}
+.guide[hidden]{display:none}
+.guide::before,.guide::after{content:"";position:absolute;width:18px;height:18px;
+       border:3px solid var(--yellow)}
+.guide::before{top:-3px;left:-3px;border-right:0;border-bottom:0}
+.guide::after{bottom:-3px;right:-3px;border-left:0;border-top:0}
 
-/* ---------- layout tiles ---------- */
-/* Six choices in a tidy 3 x 2 that fills the stage. auto-fit was tempting
-   but it packs four across and leaves a ragged second row — a kiosk wants
-   the same shape every time. */
-.tilegrid{display:grid;gap:14px;
-          grid-template-columns:repeat(3,1fr);
-          grid-auto-rows:1fr}
-@media (max-width:820px){ .tilegrid{grid-template-columns:repeat(2,1fr)} }
-.tile{min-width:0;min-height:0;padding:0;border:var(--rule) solid var(--ink);
-      background:var(--paper);display:flex;flex-direction:column;cursor:pointer;
-      --accent:var(--lavender)}
-.tile .pv{flex:1;min-height:0;min-width:0;position:relative;
-          aspect-ratio:var(--sheet-aspect, 2 / 3);
-          height:100%;width:auto;max-width:100%;margin:8px auto;
-          background:var(--screen)}
-.tile .pv canvas{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);
-                 object-fit:contain}
-.tile .cap{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;
-           border-top:var(--rule) solid var(--ink)}
-/* The layout's own colour rides the caption rule when unselected and floods
-   the whole tile when it is picked. */
-.tile .cap .lead{border-top-color:var(--accent);opacity:1}
-.tile::before{content:'';display:block;height:10px;background:var(--accent);flex:none}
-.tile.sel{background:var(--accent)}
-.tile.sel .cap{background:var(--ink)}
-.tile.sel .cap canvas{filter:invert(1)}
-.tile.sel .cap .lead{border-top-color:var(--paper)}
+/* The HUD. Pinned strips, not a centred dialog, so nothing covers a face. */
+.cam-hud{position:absolute;inset:0;pointer-events:none;display:flex;
+         flex-direction:column;justify-content:space-between;padding:var(--rule)}
+.cam-strip{display:flex;align-items:stretch;gap:var(--rule);height:40px;flex:none}
+.cam-tag{background:var(--dark);color:var(--paper);display:flex;align-items:center;
+         padding:0 14px;gap:10px}
+.cam-tag .px{font-size:12px !important;color:var(--paper)}
+.cam-tag.lightbox{background:var(--panel);color:var(--ink)}
+.cam-tag.lightbox .px{color:var(--ink)}
+.cam-tag.accent{background:var(--yellow);color:var(--ink)}
+.cam-tag.accent .px{color:var(--ink)}
+.cam-spacer{flex:1}
+.cam-bars{background:var(--dark);display:flex;align-items:center;padding:0 12px;flex:1;gap:10px}
 
-/* ---------- thumbnails: each one is a retake target ---------- */
-/* One row, equal columns, however many shots the layout takes. Wrapping was
-   the obvious choice and the wrong one: a sixth thumbnail alone on a second
-   line flex-grows to the full width and wrecks the module. */
-/* One row of square thumbnails, however many there are. The cell is capped
-   and centred rather than left to take a whole 1fr column: with a single
-   shot on a wide stage an uncapped square grew to the full panel width and
-   pushed LOOKS GOOD off the edge of the screen. */
-.thumbrow{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);
-          justify-items:center;
-          border:var(--rule-thin) solid var(--ink)}
-/* The cap is absolute as well as relative: tied to viewport height alone it
-   ballooned on a tall portrait stage and pushed the buttons into the
-   thumbnail. The vh term only ever shrinks it further on a short screen. */
-.thumbrow .t{min-width:0;width:100%;max-width:min(100%, 34vh, 260px);
-             padding:8px;position:relative;cursor:pointer;
-             border:0;border-right:var(--rule-thin) dashed var(--ink);background:var(--paper);
-             display:flex;flex-direction:column;align-items:center;gap:6px}
-.thumbrow .t:last-child{border-right:0}
-.thumbrow canvas.shot{width:100%;height:auto;aspect-ratio:1;object-fit:cover;display:block;
-                      border:var(--rule-thin) solid var(--ink)}
-.thumbrow .t .mark{position:absolute;inset:8px;bottom:30px;pointer-events:none;opacity:0}
-/* Marked for a retake: salmon wash, heavy frame, and a drawn X — three
-   signals, because this one has to be unmistakable at arm's length. */
-.thumbrow .t.marked{background:var(--salmon)}
-.thumbrow .t.marked .mark{opacity:1;
-  background:
-    linear-gradient(to bottom right, transparent calc(50% - 3px),
-      var(--paper) calc(50% - 3px) calc(50% + 3px), transparent calc(50% + 3px)),
-    linear-gradient(to bottom left, transparent calc(50% - 3px),
-      var(--paper) calc(50% - 3px) calc(50% + 3px), transparent calc(50% + 3px)),
-    rgba(201,127,127,.55);
-  outline:var(--rule) solid var(--ink);outline-offset:-2px}
+.osd{position:absolute;inset:0;pointer-events:none;display:flex;
+     align-items:flex-start;justify-content:flex-end;padding:calc(var(--rule) + 46px) var(--rule)}
+.osd[hidden]{display:none}
+/* The count sits in the corner, deliberately small. A guest has to keep
+   sight of their own face for the whole three seconds. */
+.cd-badge{background:var(--yellow);color:var(--ink);border:var(--rule) solid var(--ink);
+          min-width:112px;padding:8px 12px 10px;text-align:center}
+.cd-badge .px:first-child{display:block;font-size:11px !important;margin-bottom:2px}
+.cd-badge .px:last-child{display:block;font-size:64px !important;line-height:.94;
+                         letter-spacing:-.04em}
+.cd-foot{position:absolute;left:var(--rule);right:var(--rule);bottom:var(--rule);
+         display:flex;align-items:center;gap:12px;height:40px;padding:0 14px;
+         background:var(--dark)}
+.cd-foot .px{font-size:12px !important;color:var(--paper)}
+.cd-foot .bars i{background:#3A3A3A}
+.cd-foot .bars i.on{background:var(--yellow)}
 
-/* ---------- spec table: dashed leaders, like "24 ---- BIT DEPTH" ---------- */
-.spec{display:flex;flex-direction:column;gap:12px}
-.spec .r{display:flex;align-items:center;gap:12px}
-.spec .k{flex:none}
-.spec .lead{flex:1;height:0;border-top:var(--rule-thin) dashed var(--ink);opacity:.45}
-.spec .v{flex:0 1 auto;min-width:0;padding:5px 9px;border:var(--rule-thin) solid var(--ink)}
+.cam-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+         width:min(560px,86%);background:var(--panel);border:var(--rule) solid var(--ink);
+         padding:20px;font-family:var(--mono);font-size:13px;line-height:1.55;
+         white-space:pre-wrap;color:var(--ink)}
+.cam-msg[hidden]{display:none}
 
-/* ---------- copies stepper ---------- */
-.stepper{display:flex;gap:18px;align-items:center;justify-content:center}
-.bigbox{width:200px;height:132px;flex:none;justify-content:center;align-items:center;
-        padding-bottom:14px;position:relative;border:var(--rule) solid var(--ink)}
-/* A bar of the chosen layout's colour under the count, so the accent carries
-   from the layout tile all the way to the print. */
-.bigbox::after{content:'';position:absolute;left:0;right:0;bottom:0;height:10px;
-               background:var(--accent,var(--lavender))}
-.warn{display:flex;gap:10px;align-items:center;justify-content:center}
-.warn[hidden]{display:none}
+/* The shots taken so far, over the picture rather than beside it. */
+.shotstrip{position:absolute;left:var(--rule);bottom:calc(var(--rule) + 46px);
+           display:flex;gap:var(--rule);pointer-events:none}
+.shotstrip .shot{width:52px;height:52px;background:var(--dark);
+                 border:2px solid var(--ink);display:grid;place-items:center;
+                 color:var(--dim-on-dark);font-weight:800;font-size:13px;overflow:hidden}
+.shotstrip .shot canvas,.shotstrip .shot img{width:100%;height:100%;object-fit:cover}
+.shotstrip .shot.live{border-color:var(--yellow)}
+.shotstrip .shot.done{border-color:var(--paper)}
 
-/* ---------- admin ---------- */
-.sec{display:flex;flex-direction:column;gap:14px}
-.sec>h4{display:flex;align-items:center;gap:10px}
-.arow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
-      padding-bottom:12px;border-bottom:var(--rule-thin) dashed var(--hair)}
-.arow>label{width:160px;flex:none;font-family:var(--mono);font-size:12px;letter-spacing:.14em;
-            text-transform:uppercase;color:var(--dim)}
-.seg{display:flex;border:var(--rule-thin) solid var(--ink)}
-.seg button{min-height:50px;padding:0 14px;border:0;border-right:var(--rule-thin) solid var(--ink);
-            background:var(--paper);font-family:var(--mono);font-size:13px;letter-spacing:.08em;
-            text-transform:uppercase;color:var(--ink);cursor:pointer}
-.seg button:last-child{border-right:0}
-.seg button.on{background:var(--ink);color:var(--paper)}
-/* A long list of choices: tiles in a grid, each carrying its own rule so the
-   rows read as one ruled block. */
-.seg.wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-          flex:1;min-width:0;border-right:0;border-bottom:0}
-.seg.wrap button,.seg.wrap button:last-child{border-right:var(--rule-thin) solid var(--ink);
-          border-bottom:var(--rule-thin) solid var(--ink);padding:6px 10px}
-.afield{height:50px;padding:0 12px;border:var(--rule-thin) solid var(--ink);background:var(--paper);
-        font-family:var(--mono);font-size:15px;color:var(--ink);flex:1;min-width:200px;
-        -webkit-user-select:text;user-select:text}
-.afield:focus{outline:var(--rule-thin) solid var(--lavender);outline-offset:2px}
-/* `flex:1` is right inside a row, and wrong as a direct child of a section:
-   there the main axis is vertical and the field stretches to fill the
-   column. Keep the 50px. */
-.sec>.afield{flex:0 0 auto}
-.num{display:flex;align-items:center;border:var(--rule-thin) solid var(--ink)}
-.num button{width:56px;height:50px;border:0;background:var(--paper);cursor:pointer;
-            font-family:var(--mono);font-size:22px;color:var(--ink)}
-.num button:active{background:var(--ink);color:var(--paper)}
-.num .v{width:110px;height:50px;display:grid;place-items:center;font-family:var(--mono);font-size:15px;
-        border-left:var(--rule-thin) solid var(--ink);border-right:var(--rule-thin) solid var(--ink)}
-.note{display:flex;gap:10px;align-items:flex-start;font-family:var(--mono);font-size:12.5px;
-      line-height:1.7;color:var(--dim)}
-.swatch{width:14px;flex:none;align-self:stretch}
-.swatch.warn-c{background:var(--salmon)}
-.swatch.info-c{background:var(--lavender)}
+/* ==================================================================== *
+ * Review, confirm, print.
+ * ==================================================================== */
+.sheetcol{width:min(42%,460px);flex:none}
+.sheetwell{flex:1;min-height:0;display:grid;place-items:center;padding:14px;
+           background:var(--panel-2)}
+.sheetwell canvas{max-width:100%;max-height:100%;display:block;
+                  border:2px solid var(--ink);background:#fff}
+.thumbrow{display:flex;gap:var(--rule);flex-wrap:wrap}
+.thumbrow .mark{border:var(--rule) solid var(--ink);background:var(--panel-2);
+                padding:0;cursor:pointer;display:block;line-height:0;position:relative}
+.thumbrow .mark canvas{display:block;max-width:min(100%,34vh,260px);height:auto}
+.thumbrow .mark.marked{border-color:var(--red)}
+.thumbrow .mark .r{position:absolute;left:0;bottom:0;background:var(--red);color:var(--paper);
+                   font-size:10px;font-weight:800;padding:3px 6px;line-height:1}
 
-/* A small colour chip, used to give a label row a state colour without
-   introducing a second stroke weight. */
-.chip{width:16px;height:16px;flex:none;background:var(--lavender)}
-.chip.lav{background:var(--lavender)}
-.chip.sal{background:var(--salmon)}
-.chip.sag{background:var(--sage)}
-.chip.sla{background:var(--slate)}
+.spec{display:flex;flex-direction:column;font-family:var(--mono);font-size:12px}
+.spec .r{display:flex;gap:12px;padding:8px 2px;border-bottom:1px solid var(--hair)}
+.spec .r:last-child{border-bottom:0}
+.spec .k{text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--dim)}
+.spec .v{margin-left:auto;text-align:right;font-weight:700}
 
-.ic{display:inline-flex;flex:none}
-.ic canvas{display:block;image-rendering:pixelated}
-/* Bitmap type scales down rather than overflowing. A canvas has an intrinsic
-   size, so without this a long label pushes straight through a module wall
-   the first time someone runs the booth on a smaller window. */
-.px{display:inline-flex;align-items:center;max-width:100%;min-width:0}
-.px canvas{display:block;image-rendering:pixelated;max-width:100%;height:auto}
-.spin{animation:spin 2s steps(8) infinite}
+.scrim{position:absolute;inset:0;display:grid;place-items:center;
+       background:rgba(11,11,11,.76);padding:var(--rule)}
+.spin{animation:spin 1.4s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.admin-corner{position:absolute;top:0;left:0;width:110px;height:110px;z-index:20}
+/* ==================================================================== *
+ * Admin.
+ * ==================================================================== */
+.sec{margin-bottom:22px}
+.sec h4{display:flex;align-items:center;gap:10px;height:34px;padding:0 12px;
+        background:var(--dark);color:var(--paper);margin-bottom:var(--rule)}
+.sec h4 .px{font-size:12px !important;color:var(--paper)}
+.arow{display:flex;align-items:center;gap:12px;padding:9px 12px;background:var(--panel-2);
+      border-bottom:2px solid var(--ink);flex-wrap:wrap}
+.arow label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+            min-width:150px;flex:none}
+.seg{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
+.seg.wrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;
+          margin-left:0;width:100%}
+.seg button{min-height:38px;padding:0 12px;background:var(--panel);color:var(--ink);
+            border:2px solid var(--ink);font:800 11px/1 var(--sans);text-transform:uppercase;
+            letter-spacing:.04em;cursor:pointer;white-space:nowrap;overflow:hidden;
+            text-overflow:ellipsis}
+.seg button.on{background:var(--blue);color:var(--paper);border-color:var(--ink)}
+.num{display:flex;align-items:stretch;gap:2px;margin-left:auto}
+.num button{width:38px;min-height:38px;background:var(--panel);border:2px solid var(--ink);
+            font:800 16px/1 var(--sans);cursor:pointer}
+.num .v{min-width:82px;display:grid;place-items:center;background:var(--dark);
+        color:var(--paper);font:800 13px/1 var(--mono);border:2px solid var(--ink)}
+.afield{margin-left:auto;min-width:min(340px,100%);min-height:38px;padding:0 10px;
+        background:var(--paper);border:2px solid var(--ink);font:400 13px/1 var(--mono);
+        color:var(--ink);-webkit-user-select:text;user-select:text}
+.note{display:flex;gap:10px;padding:10px 12px;background:var(--panel);
+      border-left:6px solid var(--blue);font:400 12px/1.55 var(--mono);
+      margin-top:var(--rule);text-transform:none}
+.swatch{width:10px;height:10px;flex:none;margin-top:4px;background:var(--blue)}
+.swatch.warn-c{background:var(--red)}
+.note:has(.warn-c){border-left-color:var(--red)}
 
-/* the capture flash — a hard white blast, no colour fringing here: this
-   panel language is monochrome, so the glitch is a plain inversion */
-/* The screen as a flash.
- *
- * `fixed`, not `absolute`: this is the only light a tablet booth has, so it
- * has to be the whole panel edge to edge — the stage alone is a fraction of
- * the glass and a fraction of the light. Pure white rather than --paper, and
- * above everything, because anything it does not cover is area not lighting
- * the guest.
- *
- * `.lit` has no transition: the light must reach full strength on the frame
- * it is asked for, or the exposure happens against a ramp. Letting go of
- * `.lit` fades it, which is gentler on the eye than a hard cut. */
+/* ==================================================================== *
+ * Icons, misc.
+ * ==================================================================== */
+.ic{display:inline-grid;place-items:center;flex:none}
+.ic canvas{display:block}
+.admin-corner{position:absolute;left:0;top:0;width:110px;height:110px;z-index:40}
+.grid-overlay,.guide,.osd{z-index:2}
+.cam-hud{z-index:3}
+.shotstrip{z-index:4}
+
+/* The screen as a flash. `fixed` and above everything: this is the only
+   light a tablet booth has, so it has to be the whole panel edge to edge.
+   `.lit` has no transition — the light must be at full strength on the frame
+   it is asked for, or the exposure happens against a ramp. */
 .flash{position:fixed;inset:0;z-index:200;pointer-events:none;opacity:0;
        background:#FFFFFF;transition:opacity .2s linear}
 .flash.lit{opacity:1;transition:none}
 
-
 /* ==================================================================== *
  * Compact stage — a phone held upright.
- *
- * Mirrors `Panel.Size.compact` in the Swift build: below 700px the two-pane
- * screens stack, the chrome gives some height back, and the type steps down.
- * The touch target does not move: 64px is the floor whatever the stage.
  * ==================================================================== */
 @media (max-width: 700px){
-  .hdr{height:62px;gap:8px;padding:0 8px}
-  .hdr-back{width:42px;height:42px}
-  /* The hatch and the badge are scenery; the wordmark and the step counter
-     are not. On a phone the scenery goes so the wordmark keeps its size. */
-  .hatch,.hdr-badge{display:none}
-  .hdr-title canvas{max-height:26px;width:auto}
-  .ftr{height:44px;gap:10px;padding:0 10px}
-  .meter{width:84px;height:22px}
-
-  .pad{padding:12px}
-  .centre{padding:12px}
-  .mod-in{padding:14px;gap:14px}
-  .mod-in.tight{padding:8px;gap:8px}
-  .mod.wide,.mod.dialog{width:100%}
-
-  /* The two-pane screens become one column. The sheet takes a share of the
-     stage rather than all of it — the controls under it must always fit,
-     because a kiosk has nowhere to scroll to. */
-  .pad.row{flex-direction:column}
-  .sheetcol{flex:0 0 auto;height:34vh;min-height:0;align-self:stretch}
-  .spec{gap:8px}
-  .sheetwell canvas{inset:6px;width:calc(100% - 12px);height:calc(100% - 12px)}
-
-  /* Two columns, and rows tall enough that the sheet preview is actually
-     legible — a 65px-high well made every layout look identical. If six
-     tiles do not fit, the grid scrolls rather than shrinking them into
-     uselessness. */
-  .tilegrid{grid-template-columns:repeat(2,1fr);gap:10px;
-            grid-auto-rows:minmax(150px,1fr);
-            overflow-y:auto;overscroll-behavior:contain;min-height:0}
-  .tile .cap{padding:7px 8px;gap:6px}
-  .tile::before{height:7px}
-  .tile .pv{margin:6px auto}
-  /* The proof takes more of a phone stage now that it is not letterboxed. */
-  .sheetcol{height:38vh}
-  .btn{padding:0 12px}
-  .btn.huge{min-height:92px}
-  .btn.sqr{width:96px;height:96px}
-  .bigbox{width:150px;height:96px;padding-bottom:10px}
-  .bigbox::after{height:7px}
-  .bars{height:32px}
-  .cd-foot .bars{height:14px}
-  .cd-badge{top:8px;right:8px;padding:6px 9px 5px}
-  .cd-foot{left:8px;right:8px;bottom:8px;padding:4px 8px;gap:8px}
-  .shotstrip{height:34px}
-
-  .arow>label{width:100%}
-  .afield{min-width:0}
-
-  /* SAVE PNG is a proofing aid for the operator, not part of the guest
-     flow. On a phone the row has room for two buttons, so it goes. */
-  [data-act="save-png"]{display:none}
-}
-
-
-/* The install hint only ever appears in a Safari tab, never in the app. */
-#install-hint[hidden]{display:none}
-
-
-/* ==================================================================== *
- * Short stage — an iPhone SE, or any phone with the browser bars showing.
- *
- * The compact rules assume roughly an iPhone 15/16's height. Below that the
- * confirm screen ran out of room and clipped its last spec row behind the
- * button row, so everything gives back a little: the sheet takes a smaller
- * share, module padding tightens, spec rows sit closer.
- * ==================================================================== */
-@media (max-width: 700px) and (max-height: 740px){
-  .sheetcol{height:28vh}
-  .mod-in{padding:12px;gap:12px}
-  .mod-in.tight{padding:7px;gap:7px}
-  .spec{gap:8px}
-  .spec .v{padding:4px 7px}
-  .tilegrid{grid-auto-rows:minmax(130px,1fr)}
-  .btn.huge{min-height:80px}
-  .btn.sqr{width:84px;height:84px}
-  .bigbox{width:132px;height:84px;padding-bottom:8px}
-  .thumbrow .t{padding:6px;max-width:min(100%, 26vh, 200px)}
-}
-
-/* ---------- 80mm receipt ---------- *
-   A roll is nearly three times as tall as it is wide, so a preview well
-   is height-driven: the row decides how tall, the aspect decides how wide.
-   On a phone that row must be a fixed height rather than 1fr — three
-   narrow strips cannot fill a portrait stage, and stretching the row just
-   floats them in a very large empty box. */
-.app.rollmedia .tilegrid{grid-auto-rows:minmax(0,1fr)}
-.app.rollmedia .tile .pv{margin:8px auto}
-.app.rollmedia .sheetwell canvas,
-.app.rollmedia .tile .pv canvas{background:var(--paper)}
-
-@media (max-width:700px){
-  .app.rollmedia .tilegrid{grid-template-columns:repeat(3,1fr);
-                           grid-auto-rows:340px;align-content:center}
-  .app.rollmedia .tile .pv{margin:6px auto}
-  /* Taller than a 4x6 proof, but not so tall that the spec module below it
-     loses its last row — the confirm screen has to show COPIES. */
-  .app.rollmedia .sheetcol{height:44vh}
-}
-@media (max-width:700px) and (max-height:740px){
-  .app.rollmedia .tilegrid{grid-auto-rows:260px}
-  .app.rollmedia .sheetcol{height:31vh}
-}
-
-
-/* ==================================================================== *
- * The layout editor.
- *
- * An operator tool, so it is denser than the guest screens — 44px targets,
- * not 64 — but it speaks the same language: heavy rules, labelled modules,
- * colour only as a fill. The page itself sits on the dark display panel, the
- * way a print sits in the sheet wells.
- * ==================================================================== */
-.ed{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:14px}
-.ed-bar{flex:none;display:flex;gap:10px;align-items:stretch}
-.ed-bar .btn{min-height:50px;padding:0 16px}
-.ed-pick{flex:1;min-width:0;height:50px;font-size:14px}
-.ed-notice{flex:none;padding:10px 12px;border:var(--rule-thin) solid var(--ink);
-           background:var(--lavender);font-family:var(--mono);font-size:13px;letter-spacing:.06em}
-.ed-notice[hidden]{display:none}
-
-.ed-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:12px}
-.ed-stagebox{min-height:0;min-width:0;display:flex;flex-direction:column;
-             border:var(--rule) solid var(--ink);background:var(--screen)}
-.ed-stage{flex:1;min-height:0;position:relative;display:grid;place-items:center;
-          overflow:hidden;touch-action:none}
-.ed-paper{position:relative;background:#FFFFFF;touch-action:none;cursor:default}
-.ed-paper canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-/* The selection: a lavender frame with square grab handles, big enough for a
-   finger. Handles are the only part of it that takes a touch. */
-.ed-sel{position:absolute;border:2px solid var(--lavender);outline:1px dashed var(--ink);
-        pointer-events:none}
-.ed-sel i{position:absolute;width:22px;height:22px;background:var(--paper);
-          border:3px solid var(--ink);pointer-events:auto;touch-action:none}
-.ed-sel .h-nw{left:-12px;top:-12px;cursor:nwse-resize}
-.ed-sel .h-ne{right:-12px;top:-12px;cursor:nesw-resize}
-.ed-sel .h-sw{left:-12px;bottom:-12px;cursor:nesw-resize}
-.ed-sel .h-se{right:-12px;bottom:-12px;cursor:nwse-resize}
-.ed-sel .h-w{left:-12px;top:50%;margin-top:-11px;cursor:ew-resize}
-.ed-sel .h-e{right:-12px;top:50%;margin-top:-11px;cursor:ew-resize}
-.ed-guide{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--salmon);
-          pointer-events:none}
-.ed-info{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;
-         background:var(--paper);border-top:var(--rule-thin) solid var(--ink);
-         font-family:var(--mono);font-size:12px;letter-spacing:.04em}
-.ed-chip{height:34px;padding:0 10px;border:var(--rule-thin) solid var(--ink);background:var(--paper);
-         font-family:var(--mono);font-size:11px;letter-spacing:.1em;cursor:pointer}
-.ed-chip.on{background:var(--ink);color:var(--paper)}
-
-.ed-side{min-height:0;display:flex;flex-direction:column;border:var(--rule) solid var(--ink);
-         background:var(--paper)}
-.ed-tabs{flex:none;display:grid;grid-template-columns:repeat(4,1fr);
-         border-bottom:var(--rule) solid var(--ink)}
-.ed-tabs button{height:46px;border:0;border-right:var(--rule-thin) solid var(--ink);background:var(--paper);
-                font-family:var(--mono);font-size:12px;letter-spacing:.14em;cursor:pointer}
-.ed-tabs button:last-child{border-right:0}
-.ed-tabs button.on{background:var(--ink);color:var(--paper)}
-.ed-add{flex:none;display:flex;flex-wrap:wrap;gap:6px;padding:10px;
-        border-bottom:var(--rule-thin) solid var(--ink)}
-.ed-add button{height:38px;padding:0 10px;border:var(--rule-thin) solid var(--ink);background:var(--paper);
-               font-family:var(--mono);font-size:11px;letter-spacing:.08em;cursor:pointer}
-.ed-add button:active{background:var(--ink);color:var(--paper)}
-.ed-panel{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px;
-          display:flex;flex-direction:column;gap:10px}
-.ed-head{padding-top:6px;border-top:var(--rule-thin) solid var(--ink);margin-top:4px}
-.ed-panel>.ed-head:first-child{border-top:0;margin-top:0;padding-top:0}
-.ed-field{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;align-items:center}
-.ed-field>label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--dim);
-                text-transform:uppercase}
-.ed-ctl{min-width:0}
-.ed-row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.ed-row2 .ed-field{grid-template-columns:62px minmax(0,1fr)}
-.ed-input{height:44px;width:100%;min-width:0;font-size:14px}
-.ed-area{width:100%;min-height:96px;padding:10px;font-size:14px;line-height:1.5;resize:vertical}
-.ed-code{min-height:110px;font-size:11px;word-break:break-all}
-.ed-numwrap{display:flex;align-items:center;gap:6px}
-.ed-num{flex:1}
-.ed-unit{font-family:var(--mono);font-size:12px;color:var(--dim);width:24px}
-.ed-seg{flex-wrap:wrap}
-.ed-seg button{min-height:40px;padding:0 10px;font-size:11px}
-.ed-swatches{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.ed-sw{width:34px;height:34px;border:var(--rule-thin) solid var(--ink);cursor:pointer;padding:0}
-.ed-sw.on{outline:3px solid var(--ink);outline-offset:2px}
-.ed-pickcol{width:44px;height:36px;border:var(--rule-thin) solid var(--ink);padding:0;background:none}
-.ed-tokens{display:flex;flex-wrap:wrap;gap:6px}
-.ed-tokens button{height:34px;padding:0 8px;border:var(--rule-thin) dashed var(--ink);background:var(--paper);
-                  font-family:var(--mono);font-size:11px;cursor:pointer}
-.ed-btn{min-height:44px;width:100%;font-family:var(--mono);font-size:12px;letter-spacing:.1em}
-.ed-layers{display:flex;flex-direction:column;border:var(--rule-thin) solid var(--ink)}
-.ed-layer{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;
-          border-bottom:var(--rule-thin) dashed var(--ink);background:var(--paper);text-align:left;
-          font-family:var(--mono);font-size:12px;cursor:pointer}
-.ed-layer:last-child{border-bottom:0}
-.ed-layer b{flex:none;min-width:84px;font-weight:700;letter-spacing:.08em}
-.ed-layer span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
-.ed-layer.on{background:var(--lavender)}
-.ed-layer.on span{color:var(--ink)}
-.ed-static{cursor:default}
-.ed-x{flex:none;height:32px;padding:0 8px;border:var(--rule-thin) solid var(--ink);background:var(--salmon);
-      font-family:var(--mono);font-size:11px;cursor:pointer}
-
-/* A tablet stood upright, or a phone: the page above, the controls below. */
-@media (orientation: portrait){
-  .ed-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,52fr) minmax(0,48fr)}
-}
-@media (max-width: 700px){
-  .ed{padding:8px;gap:8px}
-  .ed-bar{flex-wrap:wrap}
-  .ed-pick{flex:1 0 100%}
-  .ed-bar .btn{flex:1;padding:0 8px}
-  .ed-field{grid-template-columns:86px minmax(0,1fr)}
-}
-
-
-/* ==================================================================== *
- * A tablet stood upright.
- *
- * Wide enough to clear the phone breakpoint, so the type and the chrome stay
- * at tablet size — but two panes side by side in a tall narrow window wastes
- * both of them. The sheet goes on top and the controls underneath, the way
- * they do on a phone, at a size worth looking at.
- * ==================================================================== */
-@media (orientation: portrait) and (min-width: 701px){
-  .pad.row{flex-direction:column}
-  .sheetcol{flex:0 0 auto;height:46vh;min-height:0;align-self:stretch;width:auto}
-  /* With the print options hidden there is nothing under the sheet but two
-     buttons, so it can have most of the stage. */
-  .screen.quick .sheetcol{flex:0 0 auto;height:62vh}
-  /* Six sheet layouts read as 2 x 3 in a tall window; three receipts are
-     narrow enough to stay in one row. */
+  :root{--step-unit:3.7px;--touch:56px}
+  .hdr{height:46px}
+  .hdr-back{width:46px}
+  .hdr-title{font-size:17px !important;padding:0 12px}
+  .mod-in{padding:12px}
+  .pad{flex-direction:column}
+  .sheetcol{width:auto;flex:1}
   .tilegrid{grid-template-columns:repeat(2,1fr)}
-  /* A roll preview is sized from its *width* here, not the row: a tall
-     portrait row left a 1:2.7 receipt floating in a column of white with a
-     third of its height wasted above and below. Width-driven, it fills the
-     column and the row takes whatever height that needs. */
-  .app.rollmedia .tilegrid{grid-template-columns:repeat(3,1fr);
-                           grid-auto-rows:min-content;align-content:center}
-  .app.rollmedia .tile .pv{flex:none;width:100%;height:auto;max-width:100%;
-                           margin:8px auto}
+  .btn.huge{min-height:76px}
+  .btn.huge .px{font-size:22px !important}
+  .bigbox{min-height:104px;font-size:56px !important}
+  .arow label{min-width:100%}
+  .seg,.num{margin-left:0}
+  .cd-badge{min-width:92px}
+  .cd-badge .px:last-child{font-size:48px !important}
 }
+
+/* A roll or a label is a tall, narrow sheet: the proof column can be much
+   narrower than it would be for a postcard, which gives the rest back. */
+@media (min-width: 701px){
+  .app.rollmedia .sheetcol{width:min(30%,320px)}
+}
+
+/* Portrait on a tablet. Must stay LAST: these share specificity with the
+   .app.rollmedia rules above and silently lose if they come first. */
+@media (orientation: portrait) and (min-width: 701px){
+  .pad{flex-direction:column}
+  .sheetcol{width:auto;flex:1}
+  .app.rollmedia .sheetcol{width:auto;flex:1}
+  .app.rollmedia .sheetwell canvas{width:100%;height:auto;max-height:none}
+  .tilegrid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ==================================================================== *
+ * The specimen sheet — the attract screen's grid, and the motifs the
+ * reference is built from. These are drawn in CSS rather than shipped as
+ * images so they stay crisp at any size and cost nothing to load in an app
+ * whose whole point is working offline.
+ * ==================================================================== */
+.sheet{flex:1;min-height:0;display:flex;gap:var(--rule)}
+.sheet-main{flex:1;min-width:0;display:flex}
+.sheet-side{width:min(30%,300px);flex:none;display:flex;flex-direction:column;
+            gap:var(--rule)}
+.centre-x{display:grid;place-items:center;text-align:center}
+
+.cell-dark{background:var(--dark);color:var(--paper);flex:none}
+.cell-dark .px{color:var(--paper)}
+.big-exp{font-size:44px !important;letter-spacing:-.045em}
+.cell-cross{display:grid;place-items:center;background:var(--panel-2)}
+
+/* Label rows: the form-like pairs the whole reference is made of. */
+.specrows{display:flex;flex-direction:column;flex:none}
+.specrows .r{display:flex;align-items:baseline;gap:12px;padding:7px 0;
+             border-bottom:2px solid var(--ink)}
+.specrows .r:last-child{border-bottom:0}
+.specrows.tightrows{padding:10px 12px}
+.specrows.tightrows .r{border-bottom:1px solid var(--hair)}
+.specrows .k{font:800 10px/1 var(--sans);letter-spacing:.09em;text-transform:uppercase;
+             color:var(--dim)}
+.specrows .v{margin-left:auto;font:800 11px/1 var(--mono);letter-spacing:.02em}
+
+/* The blue ramp, as five butted fills. */
+.swatchstrip{display:flex;height:34px;flex:none;border:var(--rule) solid var(--ink)}
+.swatchstrip i{flex:1}
+
+/* A barcode field. Irregular by design — even bars read as a pattern, and a
+   real barcode never is. */
+.barfield{height:58px;flex:none;background:var(--panel);
+          border:var(--rule) solid var(--ink);
+          background-image:repeating-linear-gradient(90deg,
+            var(--ink) 0 3px, transparent 3px 6px, var(--ink) 6px 7px, transparent 7px 12px,
+            var(--ink) 12px 16px, transparent 16px 18px, var(--ink) 18px 19px,
+            transparent 19px 24px, var(--ink) 24px 26px, transparent 26px 31px);
+          background-size:31px 100%;background-position:center}
+
+/* Line-art motifs, drawn with borders rather than an icon font. */
+.glyph{display:block;flex:none;position:relative}
+.glyph.globe{width:104px;height:104px;border:3px solid var(--ink);border-radius:50%}
+.glyph.globe::before,.glyph.globe::after{content:"";position:absolute;inset:0;
+  border:3px solid var(--ink);border-radius:50%}
+.glyph.globe::before{transform:scaleX(.45)}
+.glyph.globe::after{transform:scaleY(.45)}
+.glyph.cross{width:74px;height:74px}
+.glyph.cross::before,.glyph.cross::after{content:"";position:absolute;background:var(--ink)}
+.glyph.cross::before{left:50%;top:0;bottom:0;width:3px;transform:translateX(-50%)}
+.glyph.cross::after{top:50%;left:0;right:0;height:3px;transform:translateY(-50%)}
+
+.gap6{gap:6px}
+
+@media (max-width: 700px){
+  .sheet{flex-direction:column}
+  .sheet-side{width:auto;flex-direction:row;height:78px}
+  .sheet-side .mod:not(.cell-dark){display:none}
+  .swatchstrip{flex:1;height:auto}
+  .barfield{flex:1;height:auto}
+  .big-exp{font-size:28px !important}
+  .glyph.globe{width:70px;height:70px}
+}
+
+/* Display type that is allowed to break. `.px` is nowrap by default because
+   almost every use is a label in a fixed strip; this is the exception, and
+   it has to be explicit or a headline silently pushes its module wider than
+   the screen. Note that setPixel writes textContent, so markup inside a
+   `.px` never survives — line breaks come from here, not from a <br>. */
+.px.wrapline{white-space:normal;line-height:.96;letter-spacing:-.025em}
+
+/* ==================================================================== *
+ * Components the script builds.
+ *
+ * These override the guesses above. The markup is generated in booth.js and
+ * does not match the hand-written screens: a layout tile's caption is `.cap`
+ * with a dashed `.lead` between its two labels, a review thumbnail is a
+ * `button.t` holding `canvas.shot`, and the shot strip is bare `<i>`
+ * elements. Styling the wrong names is invisible until it is on a screen.
+ * ==================================================================== */
+
+/* Layout tile caption: label, dashed leader, value — a form row. */
+.tile .cap{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;flex:none;
+           background:var(--dark);color:var(--paper)}
+.tile .cap .px{font-size:12px !important;color:var(--paper)}
+.tile .cap .px:last-child{font-size:10px !important;color:var(--dim-on-dark)}
+.tile .cap .lead{background:repeating-linear-gradient(90deg,#4A4A4A 0 3px,transparent 3px 7px)}
+.tile.sel .cap{background:var(--blue)}
+.tile.sel .cap .px{color:var(--paper)}
+/* The tile takes the shape of its own sheet, so two receipts of different
+   lengths are not letterboxed into one shared box. */
+.tile .pv canvas{aspect-ratio:var(--sheet-aspect,auto)}
+
+/* The shot strip: one cell per frame, over the picture. */
+.shotstrip{display:flex;gap:var(--rule)}
+.shotstrip i{display:block;width:44px;height:14px;background:rgba(0,0,0,.55);
+             border:2px solid var(--paper);flex:none}
+.shotstrip i.done{background:var(--paper)}
+.shotstrip i.live{background:var(--yellow);border-color:var(--yellow)}
+
+/* Review thumbnails. `.mark` is the retake flag, hidden until tapped. */
+.thumbrow{display:flex;gap:var(--rule);flex-wrap:wrap}
+.thumbrow .t{position:relative;padding:0;line-height:0;cursor:pointer;background:var(--panel-2);
+             border:var(--rule) solid var(--ink);display:block}
+.thumbrow .t canvas.shot{display:block;width:100%;height:auto;
+                         max-width:min(100%,34vh,210px)}
+.thumbrow .t .px{position:absolute;left:0;bottom:0;background:var(--ink);color:var(--paper);
+                 font-size:11px !important;padding:3px 7px;line-height:1}
+.thumbrow .t .mark{position:absolute;inset:0;border:4px solid var(--red);display:none}
+.thumbrow .t.marked .mark{display:block}
+.thumbrow .t.marked .px{background:var(--red)}
+
+/* The sheet spec: label, dashed leader, value. */
+.spec{display:flex;flex-direction:column;flex:none}
+.spec .r{display:flex;align-items:center;gap:10px;padding:8px 0;
+         border-bottom:1px solid var(--hair)}
+.spec .r:last-child{border-bottom:0}
+.spec .k.px{font-size:10px !important;color:var(--dim);letter-spacing:.08em}
+.spec .v.px{font-size:11px !important;font-family:var(--mono)}
+.spec .lead{background:repeating-linear-gradient(90deg,var(--hair) 0 3px,transparent 3px 7px)}
+
+/* ==================================================================== *
+ * Two corrections that only show up on a real screen.
+ * ==================================================================== */
+
+/* `.pad` and `.row` are used together on the two-pane screens, and `.row`
+   sets align-items:flex-start. That makes the columns shrink to their
+   content instead of filling the stage, so the buttons at the foot of the
+   right column fall off the bottom of the screen. A pad is always a
+   full-height container, whichever direction it runs. */
+.pad.row,.pad.col{align-items:stretch}
+.pad.row > .col{min-height:0}
+
+/* A module header with one label only. The right-hand value is pushed over
+   by margin-left:auto, which with a single `b` pushes *the label* over and
+   leaves the strip looking empty on the left. */
+.mod-top b:first-of-type{margin-left:0}
+.mod-top b:only-of-type{margin-left:0;color:var(--paper)}
+
+/* Nothing may grow past the module that holds it.
+ *
+ * A flex child defaults to min-height:auto, which means "at least my content"
+ * — so a tall receipt proof or a wrapped row of thumbnails silently pushes
+ * its module past the bottom of the screen instead of scaling down. Every
+ * container in the chain has to say min-height:0 for `max-height:100%` on the
+ * canvas to mean anything at all. */
+.mod-in{min-height:0;overflow:hidden}
+.mod-in.scroll{overflow:auto}
+.sheetwell{min-height:0;min-width:0}
+.sheetwell canvas{max-width:100%;max-height:100%;width:auto;height:auto;
+                  object-fit:contain}
+.thumbrow{min-height:0;align-content:flex-start;overflow:hidden}
+/* Capped against the viewport, not just the parent: four thumbnails wrapping
+   to two rows is the case that overflows, and it is the common one. */
+.thumbrow .t canvas.shot{max-width:min(100%,20vh,180px)}
+
+/* Centre the sheet with flex, not grid.
+ *
+ * `display:grid; place-items:center` puts the canvas in an implicitly-sized
+ * row, and a percentage max-height against an auto-sized row has no definite
+ * basis, so `max-height:100%` is ignored outright — the canvas is capped on
+ * width, scales proportionally past the bottom of the module, and gets
+ * clipped. A flex container has a definite height here, so the same
+ * percentage resolves and the sheet scales to fit instead. */
+.sheetwell{display:flex;align-items:center;justify-content:center}
+.tile .pv{display:flex;align-items:center;justify-content:center}
+.tile .pv canvas{max-width:100%;max-height:100%;width:auto;height:auto}
