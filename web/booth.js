@@ -1514,8 +1514,12 @@ const DEFAULTS = {
   printLink: '',
   /* --- the tablet's printer --- */
   /// DIALOG raises the system print sheet; THERMAL goes straight out over
-  /// Bluetooth with no window at all. Android only.
+  /// Bluetooth and USB drives a printer plugged into the tablet directly,
+  /// both with no window at all. Android only.
   printMode: 'dialog',
+  /// The unprinted strip between die-cut labels, which the printer's sensor
+  /// uses to find the start of the next one. 0 for a continuous roll.
+  labelGapMM: 2,
   /// Hide the print options from the guest: no copy count, no spec table,
   /// no SAVE PNG. Press PRINT and paper comes out. The operator's settings
   /// decide the copies.
@@ -2932,7 +2936,7 @@ function showConfirm(){
 function silentPrintingLikely(){
   // On the tablet this is not a guess: the Bluetooth path has no dialog by
   // construction, and the system print sheet always has one.
-  if (NATIVE) return settings.printMode === 'thermal';
+  if (NATIVE) return settings.printMode === 'thermal' || settings.printMode === 'usb';
   const chrome = /Chrome\//.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent);
   const chromeless = window.outerHeight - window.innerHeight < 10;
   return chrome && chromeless;
@@ -2997,6 +3001,21 @@ function nativePrint(dataURL, media){
   if (settings.printMode === 'thermal') {
     NATIVE.thermalPrint(dataURL, session.copies,
                         Math.max(64, settings.thermalWidthDots | 0));
+    return;                                  // finishes in nativePrintResult
+  }
+  if (settings.printMode === 'usb') {
+    /* TSPL describes a label, not a stream, so the printer has to be told how
+     * big one is or it does not know where to stop. A roll has no height of
+     * its own — the sheet is as long as its content — so the height is
+     * measured from the rendered sheet at the head's own resolution. */
+    const dots = Math.max(64, settings.thermalWidthDots | 0);
+    const widthMM = media.flow ? rollPaperMM(media) : media.w * 25.4;
+    const heightMM = media.flow
+      ? (px && px.height ? px.height / media.dpi * 25.4 : 150)
+      : media.h * 25.4;
+    NATIVE.usbPrint(dataURL, session.copies, dots,
+                    +widthMM.toFixed(1), +heightMM.toFixed(1),
+                    +(settings.labelGapMM || 0));
     return;                                  // finishes in nativePrintResult
   }
   // Media sizes are in mils — thousandths of an inch. A roll has no page
@@ -3303,10 +3322,19 @@ async function renderAdmin(){
   if (NATIVE) {
     // On the tablet the mode is a real choice, not an inference.
     printRows.push(row('PRINT MODE', seg('printMode',
-      [['dialog', 'SYSTEM DIALOG'], ['thermal', 'BLUETOOTH']], settings.printMode)));
-    printRows.push(note(silent ? 'info' : 'warn', silent
-      ? 'Silent. Pressing PRINT dithers the sheet and sends it straight out over Bluetooth — no window, nothing for a guest to tap. Pick the printer below.'
-      : 'The Android print sheet will appear. It finds an AirPrint printer such as the SELPHY over Mopria. For a booth with nobody minding it, switch to BLUETOOTH.'));
+      [['dialog', 'SYSTEM DIALOG'], ['thermal', 'BLUETOOTH'], ['usb', 'USB']],
+      settings.printMode)));
+    if (settings.printMode === 'usb') {
+      printRows.push(row('LABEL GAP', num('labelGapMM', 0, 6, 0.5, 'mm')));
+      printRows.push(row('USB PRINTER', '<div class="seg"><button class="on">' +
+        escapeHTML(usbPrinterNames() || 'NONE FOUND') + '</button></div>'));
+    }
+    printRows.push(note(silent ? 'info' : 'warn',
+      settings.printMode === 'usb'
+      ? 'Silent, over the cable. Android itself will not print to a USB printer, so the booth drives it directly: the sheet is dithered here and sent as TSPL to the printer\u2019s own endpoint, with no window and nothing for a guest to tap. TSPL is the label-printer language — a VOZY U9 speaks it and will not take the ESC/POS that BLUETOOTH sends. Android asks for USB permission once per printer; grant it before the doors open. LABEL GAP is the unprinted strip between die-cut stickers, 0 for a continuous roll.'
+      : silent
+      ? 'Silent. Pressing PRINT dithers the sheet and sends it straight out over Bluetooth — no window, nothing for a guest to tap. Pick the printer below. This sends ESC/POS, which receipt printers understand and label printers such as the VOZY U9 do not; for one of those use USB.'
+      : 'The Android print sheet will appear. It finds an AirPrint printer such as the SELPHY over Mopria. For a booth with nobody minding it, switch to BLUETOOTH for a receipt printer or USB for a label printer on the cable.'));
   } else {
     printRows.push(row('PRINT MODE',
         '<div class="seg"><button class="' + (silent ? 'on' : '') + '">SILENT</button>' +
@@ -3525,6 +3553,14 @@ function labelPrinterNote(){
          'it prints normally. Set HEAD WIDTH to 104MM / 832 for a 4-inch head.';
 }
 
+/// Printer-class devices on the USB port, for the operator console.
+function usbPrinterNames(){
+  let raw = '';
+  try { raw = NATIVE && NATIVE.usbPrinters ? (NATIVE.usbPrinters() || '') : ''; } catch {}
+  return raw.split('\n').filter(Boolean)
+            .map(l => l.split('\t')[0]).join('  ·  ');
+}
+
 /* What is actually on the USB port, as the operator console reads it. */
 function usbDevices(){
   let raw = '';
@@ -3686,6 +3722,7 @@ function wireAdmin(root){
 function afterSettingChange(key){
   if (key === 'mirrorPreview') applyMirror();
   if (key === 'flashEnabled' || key === 'autoExposure') renderAdmin();
+  if (key === 'printMode') renderAdmin();
   // The thermal controls only mean anything against a picture, so redraw the
   // one in hand and refresh the note under the switch.
   if (key === 'thermalDither' || key === 'thermalContrast' ||
