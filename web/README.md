@@ -85,6 +85,56 @@ The trade-off, plainly: the iPad is the better camera (it can drive the
 Charmera over USB, which the Mac booth cannot) and the worse printer. The Mac
 is the reverse.
 
+## Why a printed photo comes out as a black blob
+
+Two independent causes, both fixed, both worth understanding because the
+symptom is identical.
+
+### 1. The camera exposed for the room, not the guest
+
+A guest stands in front of the room and the room is brighter than they are, so
+the camera meters for the room and puts the person at the bottom of the scale.
+On a colour print that reads as "a bit dark". On a one-bit head everything
+down there burns solid and the face becomes a silhouette with holes where the
+glasses caught the light. No amount of dithering recovers it — by then the
+tones are already squeezed into the bottom few values.
+
+**Admin → CAMERA → AUTO EXPOSURE** fixes it while the frame is still 8-bit, in
+`grabFrame`. It builds two histograms: the whole frame for black and white
+points, and the middle of the frame for the subject. A centre *average* is no
+use, because the middle is still mostly room — so it takes a low percentile of
+the centre, which picks out the darker population standing in front of the
+room, and lifts that to `EXPOSURE TARGET`.
+
+Measured on a backlit test frame, face mean luma: **53 → 111** at the old
+target, **128** at the shipped target of 165, against a head that thresholds at
+128. An already well-lit frame moves 167 → 178, so it does not wreck a good
+one.
+
+### 2. The sheet was being scaled, which destroys a dither
+
+The 80mm roll renders **576 dots** wide. Sent to a 4-inch head it has to be
+enlarged 1.44x, and **enlarging a one-bit image resamples it back into grey** —
+measured, 2 levels become 256 — which the driver then thresholds all over
+again. Every careful dithering decision is undone and photographs come back as
+blobs.
+
+Fix: render at the paper's own width so the dots the booth chose are the dots
+that burn, one for one. **`100mm Thermal Roll (receipt)`** is 799 dots, which
+is 100mm at 203dpi and matches the label exactly.
+
+**On a VOZY U9, set PAPER to `100mm Thermal Roll` for the receipt design, or
+`100 x 150 mm Label` for the photo layouts. Not the 80mm roll** — that one is
+for an actual 80mm receipt printer, and on a 4-inch head it will be scaled and
+the dither lost.
+
+End to end on a backlit frame through the receipt design, one photo cell:
+
+| | ink coverage | windows carrying detail |
+|---|---|---|
+| 80mm render, no exposure fix, driver-scaled | 60.0% | 39.2% |
+| 100mm render, auto exposure | **29.4%** | **66.6%** |
+
 ## The screen as a flash
 
 **Admin → CAMERA → SCREEN FLASH.** The whole panel turns white for the moment
