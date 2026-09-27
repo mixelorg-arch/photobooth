@@ -85,6 +85,50 @@ The trade-off, plainly: the iPad is the better camera (it can drive the
 Charmera over USB, which the Mac booth cannot) and the worse printer. The Mac
 is the reverse.
 
+## The printer, from the web build
+
+**A web page cannot list printers or connect to one.** There is no API for it
+on any platform — `navigator.printing` is a
+[WICG proposal](https://github.com/WICG/web-printing), unimplemented
+everywhere, and Safari has nothing like it. `window.print()` hands the job to
+the operating system and the page never learns what happened to it: not which
+printer, not whether it printed, not whether one exists. So the booth cannot
+auto-detect or auto-connect to anything, and a status light claiming otherwise
+would be a lie.
+
+**Admin → PRINTER** offers what detection would have been *for* instead:
+
+| Row | |
+|---|---|
+| `ROUTE` | what pressing PRINT will actually do on this device |
+| `PAPER` | the paper the sheet will be built for |
+| `LAST TEST` | when a test print was last sent, and on what paper |
+| `TEST PRINT` | sends one sheet, through exactly the path a guest's print takes |
+
+On an iPad that first test is also the setup step: iOS remembers the last
+printer used, so after choosing it once the print sheet comes up with the right
+printer already selected and PRINT is a single tap. Do it during setup, not
+with a guest waiting.
+
+The test deliberately uses the real renderer, the real thermal pipeline and the
+real page CSS rather than a simplified pattern — a test that takes a shortcut
+only proves the shortcut works. It does not advance the sheet counter.
+
+### A one-bit sheet must never be JPEG
+
+Found by that test. The booth encoded a sheet as PNG for rolls and JPEG for
+everything else, a rule written when receipts were the only thermal paper.
+Labels are thermal *sheets*, so they were being JPEGed — and JPEG is the worst
+possible codec for a dither. A field of single black and white dots is the
+worst case for a cosine transform: every dot rings, the two levels smear into a
+continuum, and the driver thresholds that continuum back to one bit, undoing
+the dithering exactly as a rescale does. Measured: **2 levels became 20** at
+quality 0.95.
+
+The rule is now "is it one bit", not "is it a roll" — `sheetDataURL()`, used by
+guest prints, editor test prints and the console test alike. Verified across
+all four paper kinds.
+
 ## Why a printed photo comes out as a black blob
 
 Two independent causes, both fixed, both worth understanding because the

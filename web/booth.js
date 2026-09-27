@@ -1520,6 +1520,11 @@ const DEFAULTS = {
   /// The unprinted strip between die-cut labels, which the printer's sensor
   /// uses to find the start of the next one. 0 for a continuous roll.
   labelGapMM: 2,
+  /// When a test print was last sent, and on what paper. A browser cannot
+  /// ask the operating system which printer is connected, so this is the
+  /// only record the booth can keep that the printer was ever reached.
+  printerTestedAt: 0,
+  printerTestedOn: '',
   /// Hide the print options from the guest: no copy count, no spec table,
   /// no SAVE PNG. Press PRINT and paper comes out. The operator's settings
   /// decide the copies.
@@ -2663,6 +2668,26 @@ function ditherOrdered(lum, W, H){
  * the same sheet it passed in. A media that is not thermal, or a dither
  * setting of 'none', leaves the pixels untouched.
  */
+/* How to encode a rendered sheet for the printer.
+ *
+ * JPEG is right for a photograph on a colour printer and catastrophic for a
+ * dithered one. The dither is a field of single black and white dots, which
+ * is the worst case for a cosine transform: every dot rings, the two levels
+ * smear into a continuum, and the driver then thresholds that continuum back
+ * to one bit — undoing the dithering exactly as a rescale does. Measured on a
+ * label sheet: 2 levels became 20 through JPEG at quality 0.95.
+ *
+ * So the test is not "is it a roll" but "is it one bit", which is any thermal
+ * paper. The old rule keyed on `flow` and was right only while receipts were
+ * the only thermal media; labels are thermal *sheets* and were being encoded
+ * as JPEG.
+ */
+function sheetDataURL(sheet, media){
+  return (media.flow || media.thermal)
+    ? sheet.toDataURL('image/png')
+    : sheet.toDataURL('image/jpeg', 0.95);
+}
+
 function thermalize(canvas, media, opts){
   opts = opts || {};
   const mode = opts.dither || settings.thermalDither || 'floyd';
@@ -2950,10 +2975,9 @@ function submitPrint(){
   setBars('#print-bars', 0.15);
 
   const media = currentMedia();
-  // A receipt is line art and a QR code: JPEG ringing around a finder pattern
-  // is exactly what stops a phone reading it. Photographs keep the JPEG.
-  const dataURL = media.flow ? session.sheet.toDataURL('image/png')
-                             : session.sheet.toDataURL('image/jpeg', 0.95);
+  // A thermal sheet is line art, a QR code and a dither: every one of those
+  // is ruined by JPEG ringing. Photographs on a colour printer keep the JPEG.
+  const dataURL = sheetDataURL(session.sheet, media);
 
   setTimeout(() => {
     el('#print-status').textContent = silentPrintingLikely()
@@ -3352,6 +3376,8 @@ async function renderAdmin(){
   }
   parts.push(section('PRINT', 'printer', printRows));
 
+  if (!NATIVE) parts.push(printerSection());
+
   parts.push(section('LAYOUT EDITOR', 'star', [
     row('YOUR LAYOUTS', '<div class="seg"><button class="on">' +
       (settings.customLayouts || []).length + ' MADE</button></div>'),
@@ -3535,6 +3561,91 @@ function labelRouteNote(){
          'iPadOS nor Android lets a web page reach a USB printer, and a ' +
          'Bluetooth-only one needs the Android build with PRINT MODE set to ' +
          'BLUETOOTH.';
+}
+
+/* Send one sheet, from the console, through the production print path.
+ *
+ * Deliberately the *real* path — the same renderer, the same thermal
+ * pipeline, the same page CSS — rather than a simplified test pattern. A test
+ * that takes a shortcut proves the shortcut works. This proves the thing a
+ * guest will actually trigger, on the paper currently selected, which is why
+ * it is also worth running after changing paper or dither settings.
+ */
+function testPrint(){
+  const media = currentMedia();
+  const tpl = guestLayouts()[0] || activeLayout();
+  if (!tpl) { toast('No layout fits the selected paper.'); return; }
+
+  const photos = (typeof edSamplePhotos === 'function' ? edSamplePhotos() : [])
+                   .slice(0, tpl.shots || 1);
+  if (!photos.length) { toast('No sample photographs to print.'); return; }
+
+  const sheet = thermalize(
+    renderSheet(photos, tpl, media, branding(tpl), 1,
+                {mono: media.thermal || settings.photoTone !== 'colour'}),
+    media);
+  const dataURL = sheetDataURL(sheet, media);
+
+  settings.printerTestedAt = Date.now();
+  settings.printerTestedOn = media.shortName;
+  saveSettings();
+
+  // The sheet counter is a record of guests served, and a test is not one.
+  openPrintDialog(dataURL, media, 1, () => { renderAdmin(); });
+}
+
+/// A brief message, on the tablet through the shell and otherwise in the
+/// console itself, so a failure here is never silent.
+function toast(message){
+  if (NATIVE && NATIVE.toast) { try { NATIVE.toast(message); return; } catch {} }
+  const body = el('#admin-body');
+  if (!body) return;
+  const box = document.createElement('div');
+  box.className = 'note';
+  box.innerHTML = '<span class="swatch warn-c"></span><span>' + escapeHTML(message) + '</span>';
+  body.insertBefore(box, body.firstChild);
+  setTimeout(() => box.remove(), 6000);
+}
+
+/* The printer, as much as a web page is allowed to know about it.
+ *
+ * Which is nothing. There is no API for listing printers in a browser and no
+ * way to connect to one: `navigator.printing` is a proposal, unimplemented
+ * everywhere, and Safari has nothing like it. `window.print()` hands the job
+ * to the operating system and the page never learns what happened to it — not
+ * which printer, not whether it printed, not whether one exists.
+ *
+ * So this section does not pretend to detect anything. What it offers instead
+ * is the thing detection would have been *for*: a way to prove, at setup,
+ * that pressing PRINT reaches paper — before a guest is standing there. On an
+ * iPad that first test is also what teaches iOS which printer to use, since
+ * it remembers the last one; after it, the print sheet comes up with the
+ * right printer already chosen and PRINT is one tap.
+ */
+function printerSection(){
+  const media = currentMedia();
+  const when = settings.printerTestedAt
+    ? new Date(settings.printerTestedAt).toLocaleString()
+    : '';
+  const rows = [
+    row('ROUTE', '<div class="seg"><button class="on">' +
+      escapeHTML(IPADOS ? 'iOS PRINT SHEET'
+                : silentPrintingLikely() ? 'SILENT TO DEFAULT PRINTER'
+                : 'SYSTEM PRINT DIALOG') + '</button></div>'),
+    row('PAPER', '<div class="seg"><button class="on">' +
+      escapeHTML(media.shortName) + '</button></div>'),
+    row('LAST TEST', '<div class="seg"><button class="on">' +
+      escapeHTML(when ? when + (settings.printerTestedOn
+                                ? '  ·  ' + settings.printerTestedOn : '')
+                      : 'NEVER') + '</button></div>'),
+    row('', '<button class="btn solid" data-act="printer-test" style="min-width:260px">' +
+      '<span class="px" data-cell="4">TEST PRINT</span></button>'),
+  ];
+  rows.push(note('info', IPADOS
+    ? 'TEST PRINT sends one sheet on the paper above, through exactly the path a guest\u2019s print takes. Do it once during setup: the iOS print sheet will come up, and the printer you choose is the one iOS offers first from then on, so every print after this is a single tap. If no printer is listed, the problem is upstream of the booth — see the note under PRINT above.'
+    : 'TEST PRINT sends one sheet on the paper above, through exactly the path a guest\u2019s print takes. Worth doing before every event: it is the only way to find out that the printer is out of paper, asleep, or set to the wrong stock while there is still time to fix it.'));
+  rows.push(note('warn', 'A web page cannot list printers or connect to one — there is no browser API for it, on any platform, and none is coming soon. The booth cannot tell you whether a printer is plugged in, only whether a sheet you sent came out. That is why this is a button and not a status light.'));
+  return section('PRINTER', 'printer', rows);
 }
 
 /* What a sticker printer needs, said once and in one place.
@@ -3812,6 +3923,7 @@ const ACTIONS = {
   print: submitPrint,
   'save-png': savePNG,
   'camera-rescan': rescanCameras,
+  'printer-test': testPrint,
 };
 
 document.addEventListener('click', e => {
@@ -3988,8 +4100,8 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 feedDescription, cameraHeld, cameraHoldState, permissionNote,
                 recoverCameraIfDropped,
                 printPageCSS, printFromDocument, rescanCameras,
-                thermalize, liftShadows, localMean, smoothing,
-                raiseFlash, dropFlash, normaliseExposure,
+                thermalize, sheetDataURL, liftShadows, localMean, smoothing,
+                raiseFlash, dropFlash, normaliseExposure, testPrint,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
