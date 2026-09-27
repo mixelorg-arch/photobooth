@@ -85,6 +85,37 @@ The trade-off, plainly: the iPad is the better camera (it can drive the
 Charmera over USB, which the Mac booth cannot) and the worse printer. The Mac
 is the reverse.
 
+## The screen as a flash
+
+**Admin → CAMERA → SCREEN FLASH.** The whole panel turns white for the moment
+of the shutter. On a tablet booth it is the only light there is, and on a dark
+stage it is worth real stops on a face.
+
+There was already a flash in the booth and it was decorative. It fired on the
+same line as the capture, so the white had not been composited — let alone
+reached the guest and come back — by the time the frame was read. It looked
+like a flash to whoever was watching the screen and put no light at all into
+the photograph.
+
+Three things make it a light instead:
+
+* It is `position: fixed` and covers the whole viewport, not the stage. The
+  stage is a fraction of the glass and was a fraction of the light.
+* The white is **painted before the shutter** — two animation frames, one to
+  apply it and one to be sure the compositor has shown it.
+* It is **held** across the capture. `FLASH HOLD` (default 140 ms) is the
+  pause before the frame is read, because a camera does not change exposure on
+  the frame the light arrives; it needs a few frames at 30 fps to meter. At 0
+  the photograph is taken before the exposure has moved.
+
+Traced through a real session: the panel is at full white for six frames
+before the shutter, still at full white on the frame that is read, and fading
+by the next one.
+
+`FLASH LEVEL` softens it below full white — gentler on the eye, less light.
+Neither control can raise the device's backlight; no web page can. Turn screen
+brightness up for an event.
+
 ## Getting detail onto thermal paper
 
 The instinct is to raise the capture resolution. That is not where the detail
@@ -98,7 +129,38 @@ grey and let the printer's driver choose, and vendor drivers generally
 threshold: every tone above some level goes white, everything below goes black,
 and a face becomes two flat shapes.
 
-The booth now does that conversion itself, under **Admin → THERMAL IMAGE**:
+The booth now does that conversion itself, under **Admin → THERMAL IMAGE**.
+The full path a photograph takes is **upscale → greyscale → contrast → lift
+local shadow → sharpen → dither**, in that order: greyscale first because
+everything after works on one channel, contrast while the tone is still
+continuous, shadow lifting after contrast because contrast is what pushes
+faces into shadow, sharpening before the dither because sharpening a dithered
+image only sharpens dot noise, and dithering last because nothing can be
+adjusted once there are two values left.
+
+Upscaling happens where the photograph is drawn into the sheet, with
+high-quality resampling on the canvas context. It matters most for a
+VGA-class camera such as the Charmera, which is genuinely *enlarged* into a
+label slot: measured at **+3.3% gradient energy** over the browser default
+when upscaling 640x480 into a 799-wide slot. Small, but free.
+
+`FACE LIFT` is the "brighten faces" step and it is **not face detection**. No
+browser here offers one — Safari has no Shape Detection API and Chrome has
+unshipped `FaceDetector` — and carrying a model would cost megabytes in an app
+whose point is working offline. It reads the *local* average brightness
+instead and lifts whatever sits in local shadow, which at a booth is usually a
+face, with a headroom term so highlights do not wash out.
+
+**What the measurements actually showed.** The enormous gain is dithering at
+all, versus letting a driver threshold. Within dithering the differences are
+small and not all one way: against a synthetic portrait with a deep shadow
+side, `ADAPTIVE` gave the best printed contrast for features inside the shadow
+(7.8 vs 6.2 for the untuned baseline) but the *worst* fine-detail retention
+(97.1% of windows carrying detail, vs 99.8%) and the most ink. `ADAPTIVE` is
+the default because it was asked for, not because it won; print one of each
+and keep whichever you prefer.
+
+Controls:
 
 | Control | What it does |
 |---|---|
