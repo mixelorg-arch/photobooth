@@ -24,8 +24,8 @@
 #      Admin console. Chrome will not ask, so whatever the driver says is
 #      what comes out — a 100x150 sticker design on a Letter default prints
 #      a photo the size of a postage stamp in the corner of a sheet of A4.
-#   3. Quit Chrome completely (it ignores the flag if an instance is already
-#      running), then run this script.
+#   3. Run it. An ordinary Chrome can stay open — this launches a separate
+#      browser with its own profile, so the flags are not swallowed by it.
 #
 # Safari has no equivalent. Use Chrome for the booth.
 set -euo pipefail
@@ -61,11 +61,22 @@ if [ ! -x "$CHROME" ]; then
     exit 1
 fi
 
-# Checked before anything else: a running Chrome makes the rest pointless,
-# and there is no sense reporting a printer for a launch that cannot happen.
-if pgrep -x "Google Chrome" >/dev/null; then
-    echo "Chrome is already running — quit it first (Cmd-Q), then run this again." >&2
-    echo "A running instance ignores --kiosk-printing and the dialog will appear." >&2
+# An already-open booth, and only that, blocks a launch.
+#
+# The usual advice is "quit Chrome first", because a second launch normally
+# hands the URL to the running instance and the flags are dropped on the
+# floor. That is true only when both share a profile. This script has always
+# used a profile of its own, which makes the new launch a genuinely separate
+# browser that keeps its own command line — measured: --kiosk-printing
+# survives, and a print lands on the printer with no dialog, while an
+# ordinary Chrome carries on in the next window. So an unrelated Chrome is
+# not a problem and must not be treated as one.
+#
+# What does clash is a second booth on the same profile: that one really
+# would be routed to the first and lose the flag.
+if pgrep -f "user-data-dir=$PROFILE" >/dev/null 2>&1; then
+    echo "The booth is already open in kiosk Chrome." >&2
+    echo "Close that window (Cmd-Q) before starting another." >&2
     exit 1
 fi
 
