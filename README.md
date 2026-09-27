@@ -141,6 +141,14 @@ refuses to guess, because `--kiosk-printing` has no dialog to catch a mistake:
 ./kiosk-chrome.sh -p Canon_SELPHY_CP1500
 ```
 
+An ordinary Chrome can stay open. The usual "quit Chrome first" rule applies
+to launching with the *default* profile, where a second launch is handed to the
+running instance and the flags are dropped. This script has always used a
+profile of its own, which makes it a genuinely separate browser — measured on
+this Mac: `--kiosk-printing` survives on its command line and a print lands on
+the printer with no dialog while another Chrome carries on beside it. Only a
+second *booth* on the same profile clashes, and the script checks for that.
+
 One default printer means one silent destination. Switching the booth between
 stickers and SELPHY postcards means switching the default too — change PAPER in
 Admin and the printer with `-p` together, or a 100 x 150 sticker design will go
