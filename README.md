@@ -47,6 +47,44 @@ Home Screen icon will keep serving the old build.
 **Lock it down** with Settings → Accessibility → **Guided Access**, then
 triple-click the side button on the attract screen.
 
+## Printing to the sticker printer from an iPad
+
+**An iPad cannot print to a USB printer.** Not through a USB-C dock, not
+through a hub, not with any app. iPadOS installs no printer drivers and
+exposes no USB printer class to apps — unlike cameras, where iPadOS 17 added
+UVC support. AirPrint is network-only. This is not a limit of the booth and
+there is nothing to code around it.
+
+**The route that does work** is to let a Mac do the driving:
+
+1. Plug the U9 into the Mac by USB and set the queue up as above.
+2. On the Mac, turn on printer sharing:
+
+```
+sudo cupsctl --share-printers
+sudo lpadmin -p _LABEL_9X00 -o printer-is-shared=true
+```
+
+   Or System Settings → General → Sharing → **Printer Sharing**, ticking the
+   label printer.
+3. Put the iPad on the same wifi. macOS advertises a shared CUPS queue over
+   Bonjour in a form iPadOS accepts, so the printer appears in the iOS print
+   sheet with no app or driver on the iPad.
+4. In the booth on the iPad: PAPER = `100 x 150 mm Label`, run a session,
+   press PRINT, pick the printer the first time.
+
+To undo the sharing afterwards: `sudo cupsctl --no-share-printers`.
+
+**It will not be silent, and cannot be.** iOS raises its own print sheet on
+every print and no app — web or native — can suppress it; even the native
+`printToPrinter` API still shows a cancellable dialog. iOS remembers the last
+printer, so after the first time it is one tap on Print. A booth that nobody is
+minding wants the Mac, where `kiosk-chrome.sh` prints with no window at all.
+
+The trade-off, plainly: the iPad is the better camera (it can drive the
+Charmera over USB, which the Mac booth cannot) and the worse printer. The Mac
+is the reverse.
+
 ## Getting detail onto thermal paper
 
 The instinct is to raise the capture resolution. That is not where the detail
