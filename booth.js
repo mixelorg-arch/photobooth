@@ -207,6 +207,20 @@ const MEDIA = {
   'thermal-80':   {id:'thermal-80',   name:'80mm Thermal Roll (receipt)',
                    shortName:'80MM ROLL',    w:576/203, h:0,   dpi:203, flow:true, paperW:80,
                    thermal:true},
+  /* A 100mm roll, which is what a 4-inch label printer is.
+   *
+   * This exists because of what scaling does to a dither. The 80mm roll
+   * renders 576 dots wide; sent to a 4-inch head it has to be enlarged, and
+   * enlarging a one-bit image resamples it back into grey — measured, 2
+   * levels become 256 — which the driver then thresholds all over again. The
+   * careful dithering is undone and photographs come back as solid blobs.
+   *
+   * Rendering at the paper's own width means the dots the booth chose are the
+   * dots that burn, one for one, with nothing in between to undo them. 799
+   * dots is 100mm at 203dpi, matching the 100 x 150 label below exactly. */
+  'thermal-100':  {id:'thermal-100',  name:'100mm Thermal Roll (receipt)',
+                   shortName:'100MM ROLL',   w:799/203, h:0,   dpi:203, flow:true, paperW:100,
+                   thermal:true},
   /* Waybill stickers, for a 4-inch thermal label printer such as the VOZY U9.
    *
    * A label is a page, not a roll. The printer feeds to the gap between
@@ -1432,6 +1446,14 @@ const DEFAULTS = {
   /// one; 'builtin' pins the tablet's own lens; anything else is a deviceId.
   cameraId: 'auto',
   mirrorPreview: true,
+  /* --- exposure --- */
+  /// Stretch each captured frame so the subject fills the tonal range. A
+  /// booth guest is nearly always darker than the room behind them.
+  autoExposure: true,
+  /// Where the middle of the frame should land, 0-255. Higher prints lighter.
+  exposureTarget: 165,
+  /// How much of the correction to apply. 0 disables it.
+  exposureStrength: 1,
   /* --- the screen as a flash --- */
   /// Fill the panel with white for the moment of capture. The only light a
   /// tablet booth has, and on a dark stage it is worth real stops on a face.
@@ -1964,6 +1986,125 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
 /* Grabs the current frame at the camera's own resolution.
  * Never mirrored — a mirrored print reverses every logo in the room, even
  * though the preview is mirrored so people can pose. */
+/* Normalise a captured frame's exposure.
+ *
+ * This is the single biggest thing standing between a booth photograph and a
+ * legible thermal print, and it is a problem of *metering*, not of printing.
+ * A guest stands in front of the camera with the room behind them. The room
+ * is brighter than they are — a window, a doorway, a lit wall — and the
+ * camera meters for the whole frame, so it exposes for the room and the
+ * person goes down into the bottom of the scale. On a colour print that reads
+ * as "a bit dark". On a one-bit head, everything below the threshold burns
+ * solid and the face is a silhouette with holes where the glasses caught the
+ * light.
+ *
+ * No amount of dithering recovers it, because by then the tones are already
+ * squeezed into the bottom few values. It has to be fixed while the frame is
+ * still 8-bit, which is here.
+ *
+ * The fix is a percentile stretch, weighted toward the middle of the frame.
+ * Centre weighting is what makes it work at a booth: the person is in the
+ * middle, the thing blowing the meter is at the edges, so counting the middle
+ * more heavily finds the range the *subject* occupies rather than the range
+ * the room occupies. That range is then stretched to fill the scale, and the
+ * midpoint pushed toward a target so faces land where a thermal head can
+ * still show them.
+ *
+ * Percentiles rather than min and max, because a single specular highlight —
+ * a ring light, a phone screen, spectacles — would otherwise set the white
+ * point and undo the whole thing.
+ */
+function normaliseExposure(c, opts){
+  opts = opts || {};
+  const strength = opts.strength !== undefined ? opts.strength : settings.exposureStrength;
+  const target = opts.target !== undefined ? opts.target : settings.exposureTarget;
+  if (strength <= 0) return c;
+
+  const W = c.width, H = c.height;
+  if (!W || !H) return c;
+  const g = c.getContext('2d');
+  let img;
+  try { img = g.getImageData(0, 0, W, H); } catch { return c; }
+  const d = img.data;
+
+  /* Two histograms, because they answer different questions.
+   *
+   * The whole frame gives the black and white points — the range the stretch
+   * has to work with. The middle of the frame gives the *subject*, and that
+   * is the harder one: a centre average is no good, because at a booth the
+   * middle of the frame is still mostly room. Taking a low percentile of the
+   * centre instead picks out the darker population in the middle, which is
+   * the person standing in front of the room. That is the level worth
+   * driving to a target; everything else follows from it.
+   */
+  const hist = new Float64Array(256);
+  const centre = new Float64Array(256);
+  const cx = W / 2, cy = H * 0.45, rx = W * 0.34, ry = H * 0.44;
+  let total = 0, centreTotal = 0;
+  for (let y = 0; y < H; y += 2) {
+    const ny = (y - cy) / ry;
+    for (let x = 0; x < W; x += 2) {
+      const i = (y * W + x) * 4;
+      const l = (LUMA_R * d[i] + LUMA_G * d[i + 1] + LUMA_B * d[i + 2]) | 0;
+      hist[l]++; total++;
+      const nx = (x - cx) / rx;
+      if (nx * nx + ny * ny < 1) { centre[l]++; centreTotal++; }
+    }
+  }
+  if (!total) return c;
+
+  const pct = (h, n, p) => {
+    let acc = 0; const want = n * p;
+    for (let v = 0; v < 256; v++) { acc += h[v]; if (acc >= want) return v; }
+    return 255;
+  };
+  const lo = pct(hist, total, 0.01), hi = pct(hist, total, 0.99);
+
+  // A frame with almost no range is a lens cap or a blank wall; stretching it
+  // would only amplify sensor noise into dot mush.
+  if (hi - lo < 12) return c;
+
+  // Never stretch harder than this, or grain becomes the subject.
+  const gain = Math.min(3.2, 255 / (hi - lo));
+
+  // The darker third of the middle: the guest, not the room behind them.
+  const subject = centreTotal ? pct(centre, centreTotal, 0.30) : pct(hist, total, 0.30);
+  const subjectAfterGain = (subject - lo) * gain;
+
+  /* Move that to where a face should sit, but only most of the way, and
+   * within limits. A full correction every time would render a deliberately
+   * dim room and a bright one as the same grey, and a booth that flattens the
+   * look of the venue is not doing anyone a favour. The clamp stops a frame
+   * that is nearly all subject — someone leaning into the lens — from being
+   * hauled across the scale. */
+  let shift = (target - subjectAfterGain) * 0.8;
+  if (shift > 120) shift = 120; else if (shift < -90) shift = -90;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gg = d[i + 1], bb = d[i + 2];
+    const l = LUMA_R * r + LUMA_G * gg + LUMA_B * bb;
+    if (l <= 0) {
+      // Pure black has no ratio to scale by; lift it directly or it stays a
+      // hole in an otherwise corrected frame.
+      const v = Math.max(0, Math.min(255, (0 - lo) * gain + shift)) * strength;
+      d[i] = d[i + 1] = d[i + 2] = v;
+      continue;
+    }
+    let nl = (l - lo) * gain + shift;
+    if (nl < 0) nl = 0; else if (nl > 255) nl = 255;
+    nl = l + (nl - l) * strength;
+    // Channels scale together, so the correction is exposure and not a
+    // colour cast. Mono output does not care; a SELPHY print does.
+    const f = nl / l;
+    let v;
+    v = r * f;  d[i]     = v > 255 ? 255 : v;
+    v = gg * f; d[i + 1] = v > 255 ? 255 : v;
+    v = bb * f; d[i + 2] = v > 255 ? 255 : v;
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
 function grabFrame(){
   // One place reads the pixels, so nothing downstream has to know which
   // kind of camera produced them.
@@ -1977,7 +2118,10 @@ function grabFrame(){
   c.width = w; c.height = h;
   try { c.getContext('2d').drawImage(source, 0, 0, w, h); }
   catch { return null; }
-  return c;
+  // Corrected here, at capture, rather than at print: this is the last point
+  // where the frame is still continuous tone, and a dither cannot recover
+  // what a bad exposure has already thrown away.
+  return settings.autoExposure ? normaliseExposure(c) : c;
 }
 
 /* ==================================================================== *
@@ -3117,11 +3261,17 @@ async function renderAdmin(){
 
   camRows.push(
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
+    row('AUTO EXPOSURE', seg('autoExposure', [[true, 'ON'], [false, 'OFF']], settings.autoExposure)),
+    row('EXPOSURE TARGET', num('exposureTarget', 100, 200, 5, '')),
+    row('EXPOSURE AMOUNT', num('exposureStrength', 0, 1, 0.1, '')),
     row('SCREEN FLASH', seg('flashEnabled', [[true, 'ON'], [false, 'OFF']], settings.flashEnabled)),
     row('FLASH HOLD', num('flashHoldMs', 0, 500, 20, 'ms')),
     row('FLASH LEVEL', num('flashLevel', 0.2, 1, 0.1, '')),
     row('COUNTDOWN', num('countdownSeconds', 1, 10, 1, 's')),
     row('SHOT GAP', num('betweenShotsSeconds', 0.5, 6, 0.5, 's')),
+    note(settings.autoExposure ? 'info' : 'warn', settings.autoExposure
+      ? 'A guest stands in front of the room, and the room is brighter than they are, so the camera exposes for the room and puts the person at the bottom of the scale. On a thermal head everything down there burns solid and a face becomes a silhouette. This finds the darker part of the middle of the frame — the guest, not the wall behind them — and lifts it to EXPOSURE TARGET. Raise the target if faces still print dark; lower it if they look washed out. EXPOSURE AMOUNT softens the whole correction.'
+      : 'Off: frames are printed as the camera metered them. In a backlit room that means faces at the bottom of the scale, which on thermal paper burns solid black. Nothing downstream can put the tone back.'),
     note(settings.flashEnabled ? 'info' : 'warn', settings.flashEnabled
       ? 'The whole panel turns white for the moment of the shutter, which is the only light a tablet booth has. FLASH HOLD is how long it stays lit before the frame is read — a camera needs a few frames to meter against new light, so at 0 the photograph is taken before the exposure has moved and the flash does nothing. Raise it if faces still come out dark; lower it if the pause feels long. Turn the device\u2019s screen brightness up: no web page can raise the backlight itself.'
       : 'Off: the shutter is silent and dark. On a lit stage that is right; in a dim room faces will be underexposed and there is nothing downstream that can put the light back.'),
@@ -3535,7 +3685,7 @@ function wireAdmin(root){
 
 function afterSettingChange(key){
   if (key === 'mirrorPreview') applyMirror();
-  if (key === 'flashEnabled') renderAdmin();
+  if (key === 'flashEnabled' || key === 'autoExposure') renderAdmin();
   // The thermal controls only mean anything against a picture, so redraw the
   // one in hand and refresh the note under the switch.
   if (key === 'thermalDither' || key === 'thermalContrast' ||
@@ -3802,7 +3952,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 recoverCameraIfDropped,
                 printPageCSS, printFromDocument, rescanCameras,
                 thermalize, liftShadows, localMean, smoothing,
-                raiseFlash, dropFlash,
+                raiseFlash, dropFlash, normaliseExposure,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
