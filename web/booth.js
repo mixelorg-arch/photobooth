@@ -1429,6 +1429,22 @@ const DEFAULTS = {
   sheetCounter: 1,
   /// Photographs are monochrome to match the print design. MONO or COLOUR.
   photoTone: 'mono',
+  /* --- preparing a photograph for a one-bit head --- */
+  /// How the sheet is reduced to the only two things a thermal head can
+  /// print. 'floyd' diffuses the error into neighbouring dots and is what
+  /// makes a face look like a face; 'ordered' is a fixed screen, coarser but
+  /// more even on flat tone; 'none' hands 8-bit grey to the driver and lets
+  /// it decide, which is what the booth used to do.
+  thermalDither: 'floyd',
+  /// Midtone contrast before dithering. Thermal prints compress the ends of
+  /// the scale, so a photograph that looks right on screen goes muddy.
+  thermalContrast: 1.35,
+  /// Lightness before dithering. Heat spreads into the paper around each dot,
+  /// so a print comes out darker than the pixels say.
+  thermalBrightness: 8,
+  /// Unsharp masking before dithering. Error diffusion smears fine edges;
+  /// a little sharpening puts them back. 0 turns it off.
+  thermalSharpen: 0.8,
   /* --- the receipt, on 80mm thermal --- */
   /// Names for the shot-order rows, comma separated. Falls back to FRAME 01.
   printTracks: '',
@@ -2187,13 +2203,162 @@ function buildShotStrip(){
   }
 }
 
+/* ==================================================================== *
+ * Preparing a sheet for a one-bit head
+ *
+ * A thermal printer burns a dot or it does not. There is no grey, and no
+ * amount of capture resolution changes that — the camera already hands the
+ * booth more than twice the pixels a 100mm label can print. What decides how
+ * much of a face survives is which dots get burned, and until now the booth
+ * sent 8-bit grey and let the printer's own driver choose. Vendor drivers
+ * generally threshold: every tone above some level becomes white, everything
+ * below becomes black, and a face turns into two flat shapes.
+ *
+ * Doing it here instead, with error diffusion, is the whole difference. Each
+ * dot takes the nearest of black or white, and the error — how wrong that
+ * choice was — is pushed into the neighbours not yet decided, so a midtone
+ * becomes a texture of black and white dots that reads as grey at arm's
+ * length. The driver is then handed pure black and white and has nothing left
+ * to decide.
+ *
+ * Order matters: tone first, then sharpening, then dithering. Sharpening
+ * after a dither would only sharpen dot noise, and tone applied after would
+ * have nothing continuous left to work on.
+ * ==================================================================== */
+
+/// Luminance, the way the eye weights it. A flat average makes skin too dark
+/// and skies too light, which on one bit is the difference between a face and
+/// a silhouette.
+const LUMA_R = 0.2126, LUMA_G = 0.7152, LUMA_B = 0.0722;
+
+/* A 4x4 ordered (Bayer) screen, scaled to thresholds. Coarser than error
+ * diffusion on a photograph, but it does not smear, so large flat areas stay
+ * even instead of growing the worms error diffusion can produce. */
+const BAYER4 = [
+  [ 0,  8,  2, 10],
+  [12,  4, 14,  6],
+  [ 3, 11,  1,  9],
+  [15,  7, 13,  5],
+];
+
+/// Sharpen in place: out = in + amount * (in - blur), with a 3x3 box blur.
+/// Cheap, and at 203dpi indistinguishable from anything more principled.
+function unsharp(lum, W, H, amount){
+  if (amount <= 0) return;
+  const blur = new Float32Array(lum.length);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let sum = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= H) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= W) continue;
+          sum += lum[yy * W + xx]; n++;
+        }
+      }
+      blur[y * W + x] = sum / n;
+    }
+  }
+  for (let i = 0; i < lum.length; i++) {
+    lum[i] = lum[i] + amount * (lum[i] - blur[i]);
+  }
+}
+
+/* Floyd-Steinberg, scanned boustrophedon - left to right, then right to
+ * left. Always scanning the same way walks the error across the page and
+ * leaves a visible diagonal grain; alternating cancels it. */
+function ditherFloyd(lum, W, H){
+  for (let y = 0; y < H; y++) {
+    const ltr = (y & 1) === 0;
+    for (let i = 0; i < W; i++) {
+      const x = ltr ? i : W - 1 - i;
+      const idx = y * W + x;
+      const was = lum[idx];
+      const now = was < 128 ? 0 : 255;
+      lum[idx] = now;
+      const err = was - now;
+      if (err === 0) continue;            // pure black and white cost nothing
+      const fwd = ltr ? 1 : -1;
+      const hasNext = ltr ? x + 1 < W : x - 1 >= 0;
+      const hasPrev = ltr ? x - 1 >= 0 : x + 1 < W;
+      if (hasNext) lum[idx + fwd] += err * 0.4375;            // 7/16
+      if (y + 1 < H) {
+        if (hasPrev) lum[idx + W - fwd] += err * 0.1875;      // 3/16
+        lum[idx + W] += err * 0.3125;                          // 5/16
+        if (hasNext) lum[idx + W + fwd] += err * 0.0625;      // 1/16
+      }
+    }
+  }
+}
+
+function ditherOrdered(lum, W, H){
+  for (let y = 0; y < H; y++) {
+    const rowScreen = BAYER4[y & 3];
+    for (let x = 0; x < W; x++) {
+      const t = (rowScreen[x & 3] + 0.5) * 16;   // 8 .. 248
+      const idx = y * W + x;
+      lum[idx] = lum[idx] < t ? 0 : 255;
+    }
+  }
+}
+
+/* Reduce a rendered sheet to what the head can actually burn.
+ *
+ * Works on the canvas in place and returns it, so a caller can treat it as
+ * the same sheet it passed in. A media that is not thermal, or a dither
+ * setting of 'none', leaves the pixels untouched.
+ */
+function thermalize(canvas, media, opts){
+  opts = opts || {};
+  const mode = opts.dither || settings.thermalDither || 'floyd';
+  if (!media || !media.thermal || mode === 'none') return canvas;
+
+  const W = canvas.width, H = canvas.height;
+  if (!W || !H) return canvas;
+  const g = canvas.getContext('2d');
+  const img = g.getImageData(0, 0, W, H);
+  const d = img.data;
+
+  const contrast = opts.contrast !== undefined ? opts.contrast : settings.thermalContrast;
+  const bright = opts.brightness !== undefined ? opts.brightness : settings.thermalBrightness;
+  const sharpen = opts.sharpen !== undefined ? opts.sharpen : settings.thermalSharpen;
+
+  // Luminance, toned. Kept in floats because error diffusion needs somewhere
+  // to put fractions of a dot.
+  const lum = new Float32Array(W * H);
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    let v = LUMA_R * d[i] + LUMA_G * d[i + 1] + LUMA_B * d[i + 2];
+    v = (v - 128) * contrast + 128 + bright;
+    lum[p] = v < 0 ? 0 : v > 255 ? 255 : v;
+  }
+
+  unsharp(lum, W, H, sharpen);
+  if (mode === 'ordered') ditherOrdered(lum, W, H);
+  else ditherFloyd(lum, W, H);
+
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const v = lum[p];
+    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return canvas;
+}
+
 function compose(){
   const media = currentMedia();
   // A thermal head has one ink and two states. COLOUR on thermal paper would
   // show the guest a preview the printer cannot produce, so the paper wins.
-  session.sheet = renderSheet(session.photos, session.layout, media,
-                              branding(session.layout), 1,
-                              {mono: media.thermal || settings.photoTone !== 'colour'});
+  // Dithered here rather than at print time, so the sheet the guest approves
+  // on the review and confirm screens is the exact one that burns — down to
+  // the dot. A preview that flatters the print is worse than no preview.
+  session.sheet = thermalize(
+    renderSheet(session.photos, session.layout, media,
+                branding(session.layout), 1,
+                {mono: media.thermal || settings.photoTone !== 'colour'}),
+    media);
 }
 
 /* ==================================================================== *
@@ -2799,6 +2964,25 @@ async function renderAdmin(){
     note('info', 'DISPLAY WORD is the oversized word on the sheet — a long one runs off the edge on purpose, and on a receipt it is the script line under the event name. Leave it empty to use the event name. SHEET NO. prints as "003." and counts up with every print.'),
   ]));
 
+  if (currentMedia().thermal) {
+    const mode = settings.thermalDither || 'floyd';
+    parts.push(section('THERMAL IMAGE', 'star', [
+      row('DITHER', seg('thermalDither',
+        [['floyd', 'DIFFUSION'], ['ordered', 'SCREEN'], ['none', 'OFF']], mode)),
+      row('CONTRAST', num('thermalContrast', 0.6, 2.5, 0.05, '')),
+      row('BRIGHTNESS', num('thermalBrightness', -40, 40, 4, '')),
+      row('SHARPEN', num('thermalSharpen', 0, 2, 0.2, '')),
+      note(mode === 'none' ? 'warn' : 'info',
+        mode === 'none'
+          ? 'OFF sends the printer 8-bit grey and lets its driver decide which dots to burn. Most drivers simply threshold — every tone above a level goes white, everything below goes black — and a face becomes two flat shapes. This is what the booth did before; keep it only if your printer dithers better than this does.'
+          : mode === 'ordered'
+          ? 'SCREEN uses a fixed 4x4 pattern. Coarser than DIFFUSION on a face, but it never smears, so large flat areas stay even. Worth trying if DIFFUSION shows worm-like streaks on plain backgrounds.'
+          : 'DIFFUSION pushes each dot\u2019s rounding error into its neighbours, so midtones become a texture that reads as grey at arm\u2019s length. This is what keeps a face looking like a face on a one-bit head.'),
+      note('info', 'CONTRAST and BRIGHTNESS are applied before dithering, because afterwards there is nothing continuous left to adjust. Thermal paper darkens as heat spreads around each dot, so prints come out heavier than the screen suggests — raise BRIGHTNESS if faces are filling in, raise CONTRAST if the whole thing looks grey and flat. SHARPEN puts back the fine edges that error diffusion smears; set it to 0 if text starts to look gritty.'),
+      note('info', 'The review and confirm screens show the dithered sheet, so what a guest approves is exactly what burns, dot for dot.'),
+    ]));
+  }
+
   parts.push(section('RECEIPT', 'printer', [
     row('SHOT NAMES', field('printTracks', 'comma separated, e.g. ARRIVAL, THE TOAST')),
     row('PARAGRAPH', field('printPara', 'the small print above the QR')),
@@ -3087,6 +3271,13 @@ function wireAdmin(root){
 
 function afterSettingChange(key){
   if (key === 'mirrorPreview') applyMirror();
+  // The thermal controls only mean anything against a picture, so redraw the
+  // one in hand and refresh the note under the switch.
+  if (key === 'thermalDither' || key === 'thermalContrast' ||
+      key === 'thermalBrightness' || key === 'thermalSharpen') {
+    if (session.photos && session.photos.some(Boolean) && session.layout) compose();
+    if (key === 'thermalDither') renderAdmin();
+  }
   if (key === 'cameraId') {
     // Reopen at once rather than waiting for the next guest: whatever asking
     // costs — a permission prompt on iOS — is owed by the operator standing
@@ -3344,6 +3535,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 feedDescription, cameraHeld, cameraHoldState, permissionNote,
                 recoverCameraIfDropped,
                 printPageCSS, printFromDocument, rescanCameras,
+                thermalize,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.

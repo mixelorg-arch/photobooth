@@ -47,6 +47,50 @@ Home Screen icon will keep serving the old build.
 **Lock it down** with Settings → Accessibility → **Guided Access**, then
 triple-click the side button on the attract screen.
 
+## Getting detail onto thermal paper
+
+The instinct is to raise the capture resolution. That is not where the detail
+goes. A 100 x 150 label is 799 dots wide and the camera is asked for 1920 —
+**2.4 source pixels per printed dot**, more than twice what is needed. Raising
+it further changes nothing on paper.
+
+What decides how much of a face survives is *which dots get burned*. A thermal
+head burns a dot or it does not; there is no grey. The booth used to send 8-bit
+grey and let the printer's driver choose, and vendor drivers generally
+threshold: every tone above some level goes white, everything below goes black,
+and a face becomes two flat shapes.
+
+The booth now does that conversion itself, under **Admin → THERMAL IMAGE**:
+
+| Control | What it does |
+|---|---|
+| `DITHER` | `DIFFUSION` (Floyd–Steinberg), `SCREEN` (ordered 4x4 Bayer), or `OFF` (the old behaviour — hand grey to the driver) |
+| `CONTRAST` | Midtone contrast **before** dithering. Thermal compresses the ends of the scale |
+| `BRIGHTNESS` | Lightness before dithering. Heat spreads around each dot, so prints come out heavier than the screen |
+| `SHARPEN` | Unsharp masking before dithering. Error diffusion smears fine edges; this puts them back. 0 turns it off |
+
+Order matters and is fixed: tone, then sharpening, then dithering. Sharpening
+after a dither would only sharpen dot noise, and tone applied afterwards would
+have nothing continuous left to work on.
+
+Error diffusion takes the nearest of black or white for each dot and pushes the
+error — how wrong that choice was — into the neighbours not yet decided, so a
+midtone becomes a texture that reads as grey at arm's length. The printer is
+then handed pure black and white with nothing left to decide.
+
+Measured: the sheet leaves the booth with **2 distinct levels, 100% pure black
+or white**, at a cost of **30 ms** per sheet for a 958,000-dot label. Non-thermal
+papers are untouched — the step is a no-op unless the paper is thermal, verified
+by hash across all six.
+
+The dither runs in `compose()`, so the review and confirm screens show the
+dithered sheet: what a guest approves is what burns, dot for dot.
+
+**If DIFFUSION shows worm-like streaks** on large flat areas, try `SCREEN` — it
+is coarser on a face but never smears. **If faces fill in solid**, raise
+BRIGHTNESS. **If it all looks grey and flat**, raise CONTRAST. **If text turns
+gritty**, drop SHARPEN to 0.
+
 ## Sticker and waybill printers
 
 Two label papers are built in, under **Admin → PRINT → PAPER**:
