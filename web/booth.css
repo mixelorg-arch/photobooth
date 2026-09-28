@@ -672,15 +672,29 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 
 /* The call to action sits under the mirror, not over it: a button laid across
    someone's face is the one thing worse than no preview at all. */
-/* The foot: one line of copy, then the button, both centred and both as
-   small as they can be while still reading across a room. Everything not the
-   picture is chrome, and chrome should take the least room that does its
-   job. */
-.attract-foot{flex:none;display:flex;flex-direction:column;align-items:center;
-              gap:8px}
-.attract-copy{display:flex;align-items:center;gap:10px;min-width:0}
-.attract-sep{width:5px;height:5px;background:var(--ink);flex:none}
-.attract-go{min-height:60px;width:min(460px,66%);padding:0 18px}
+/* The call to action, centred over the picture.
+ *
+ * There is no row under the mirror any more — the stage is all preview, so
+ * the button sits on top of it. Centre is not an arbitrary choice: someone
+ * looking at their own face is already looking at the middle of the screen,
+ * which is the one place a call to action does not have to compete for
+ * attention.
+ *
+ * The block is `pointer-events:none` and only the button takes them back, so
+ * the caption underneath cannot swallow a tap aimed at the edge of it. */
+.attract-cta{position:absolute;inset:0;z-index:5;display:flex;
+             flex-direction:column;align-items:center;justify-content:center;
+             gap:14px;pointer-events:none;padding:16px}
+.attract-go{pointer-events:auto;min-height:72px;width:min(460px,72%);padding:0 20px;
+            /* Lifted off the picture, because a flat panel laid on a
+               photograph looks like a rendering mistake. */
+            box-shadow:0 6px 0 rgba(0,0,0,.45)}
+/* On the picture rather than on paper, so the caption is reversed out and
+   given a plate to sit on. */
+.attract-copy{display:flex;align-items:center;gap:10px;min-width:0;
+              padding:6px 12px;background:rgba(17,17,17,.62)}
+.attract-copy .px{color:var(--paper)}
+.attract-sep{width:5px;height:5px;background:var(--paper);flex:none}
 
 
 
@@ -697,8 +711,9 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 [data-screen="attract"] .mod-top b{font-size:11px}
 
 @media (max-width: 700px){
-  .attract-go{width:100%;min-height:54px}
-  .attract-copy{flex-wrap:wrap;justify-content:center}
+  .attract-go{width:86%;min-height:60px}
+  .attract-copy{flex-wrap:wrap;justify-content:center;text-align:center}
+  .attract-cta{gap:10px}
 }
 
 /* ==================================================================== *

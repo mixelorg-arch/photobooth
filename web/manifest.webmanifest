@@ -1,7 +1,7 @@
 {
-  "name": "Photobooth",
-  "short_name": "Photobooth",
-  "description": "Self-serve photobooth kiosk.",
+  "name": "SnapBox",
+  "short_name": "SnapBox",
+  "description": "Self-serve SnapBox photo kiosk.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
