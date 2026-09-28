@@ -1709,7 +1709,7 @@ function tickViewfinder(){
   vfWrite('.vf-tc', p2(Math.floor(secs / 3600)) + ':' +
                     p2(Math.floor(secs / 60) % 60) + ':' + p2(secs % 60));
 
-  vfWrite('.vf-name', (settings.eventName || 'PHOTOBOOTH').toUpperCase().slice(0, 16));
+  vfWrite('.vf-name', (settings.eventName || 'SNAPBOX').toUpperCase().slice(0, 16));
 }
 
 /// REC while the shutter sequence is running, PLAY the rest of the time.
@@ -2231,15 +2231,15 @@ const screens = {};
 document.querySelectorAll('.screen').forEach(s => screens[s.dataset.screen] = s);
 
 const TASK_LABELS = {
-  attract:  ['PHOTOBOOTH', 'READY'],
+  attract:  ['SNAPBOX', 'READY'],
   layout:   ['LAYOUT',     'STEP 1/4'],
   capture:  ['CAPTURE',    'STEP 1/4'],
   review:   ['REVIEW',     'STEP 2/4'],
   copies:   ['COPIES',     'STEP 3/4'],
   confirm:  ['PRINT',      'STEP 4/4'],
   printing: ['SPOOLER',    'BUSY'],
-  thankyou: ['PHOTOBOOTH', 'DONE'],
-  failed:   ['PHOTOBOOTH', 'ERROR'],
+  thankyou: ['SNAPBOX', 'DONE'],
+  failed:   ['SNAPBOX', 'ERROR'],
   admin:    ['CONTROL',    'OPERATOR'],
   editor:   ['EDITOR',     'OPERATOR'],
 };
@@ -2256,7 +2256,7 @@ function updateShotCount(){
 function go(step){
   session.step = step;
   Object.entries(screens).forEach(([name, node]) => node.hidden = (name !== step));
-  const [left, right] = TASK_LABELS[step] || ['PHOTOBOOTH', ''];
+  const [left, right] = TASK_LABELS[step] || ['SNAPBOX', ''];
   setPixel(el('#task-left'), left, 3);
   setPixel(el('#task-right'), right, 3);
   // The back arrow is the ✕ of this language: present only inside a session.
@@ -3126,7 +3126,7 @@ function nativePrint(dataURL, media){
   // height, so its length is whatever the receipt came out.
   const page = printPaperMils(media, px);
   NATIVE.printSheet(dataURL, session.copies, page.w, page.h,
-                    'Photobooth ' + media.shortName);
+                    'SnapBox ' + media.shortName);
   setBars('#print-bars', 1);
   finishPrinting();
 }
@@ -3177,7 +3177,7 @@ function openPrintDialog(dataURL, media, copies, done){
   doc.open();
   const page = printPageCSS(media);
   doc.write(
-    '<!doctype html><meta charset="utf-8"><title>Photobooth print</title><style>' +
+    '<!doctype html><meta charset="utf-8"><title>SnapBox print</title><style>' +
     'html,body{margin:0;padding:0;background:#fff}' + page +
     'img:last-child{page-break-after:auto;break-after:auto}' +
     '</style>' + pages);
