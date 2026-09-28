@@ -672,22 +672,34 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 
 /* The call to action sits under the mirror, not over it: a button laid across
    someone's face is the one thing worse than no preview at all. */
-.attract-foot{flex:none}
-.attract-copy{min-width:0}
-.attract-go{min-width:min(420px,52%)}
+/* The foot: one line of copy, then the button, both centred and both as
+   small as they can be while still reading across a room. Everything not the
+   picture is chrome, and chrome should take the least room that does its
+   job. */
+.attract-foot{flex:none;display:flex;flex-direction:column;align-items:center;
+              gap:8px}
+.attract-copy{display:flex;align-items:center;gap:10px;min-width:0}
+.attract-sep{width:5px;height:5px;background:var(--ink);flex:none}
+.attract-go{min-height:60px;width:min(460px,66%);padding:0 18px}
+
+
+
+/* Give the mirror the argument.
+ *
+ * Everything on this screen that is not the picture is chrome, so all of it
+ * is squeezed: the module's label strip, its padding, the gaps between rows.
+ * The preview took 64% of the stage before this and takes close to 80% after
+ * it, which on a tablet is the difference between a booth you can frame
+ * yourself in from across a room and one you have to lean into. */
+[data-screen="attract"] .pad{gap:8px;padding:0}
+[data-screen="attract"] .mod-in.tight{padding:var(--rule-thin)}
+[data-screen="attract"] .mod-top{height:30px}
+[data-screen="attract"] .mod-top b{font-size:11px}
 
 @media (max-width: 700px){
-  .attract-foot{flex-wrap:wrap}
-  .attract-copy{flex-basis:100%}
-  .attract-go{min-width:100%}
+  .attract-go{width:100%;min-height:54px}
+  .attract-copy{flex-wrap:wrap;justify-content:center}
 }
-
-/* Give the mirror the argument. The call to action was 118px of a 512px
-   stage, which is more than a button that says two words needs — the
-   preview is the thing worth the glass. */
-.attract-foot .btn.huge{min-height:84px}
-[data-screen="attract"] .pad{gap:10px}
-[data-screen="attract"] .mod-in.tight{padding:var(--rule-thin)}
 
 /* ==================================================================== *
  * The tape overlay.
