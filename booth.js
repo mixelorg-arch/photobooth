@@ -162,28 +162,17 @@ function pixelTextCanvas(text, cell, colour){
 
 /* Replaces the text of a .px element with its bitmap rendering. The source
  * string is kept in the dataset so the element can be re-set later. */
-/* Set a piece of display type.
- *
- * This used to draw a 5x7 bitmap font to a canvas, which was the whole look
- * of the old booth. The label-system design this now wears is set in a
- * grotesque, so the text is text again — selectable by the renderer, kerned
- * by the browser, and legible at sizes a bitmap font could not reach.
- *
- * `cell` survives as a *step* on a type scale rather than a pixel size, so
- * every call site that asked for "cell 5" still asks for the same relative
- * weight in the hierarchy and the scale itself can be tuned in one place.
- */
 function setPixel(node, text, cell){
   if (text !== undefined) node.dataset.text = text;
   const source = node.dataset.text !== undefined ? node.dataset.text : node.textContent;
   node.dataset.text = source;
-  node.textContent = source;
-  node.style.setProperty('--step', cell || +(node.dataset.cell || 4));
+  node.textContent = '';
+  node.appendChild(pixelTextCanvas(source, cell || +(node.dataset.cell || 4)));
 }
 
 function paintPixelText(root){
   (root || document).querySelectorAll('.px').forEach(node => {
-    if (node.dataset.text !== undefined && node.style.getPropertyValue('--step')) return;
+    if (node.dataset.text !== undefined && node.firstElementChild) return;
     setPixel(node);
   });
 }
@@ -1678,6 +1667,27 @@ function sheetPixels(tpl, media){
  * ==================================================================== */
 const video = document.getElementById('video');
 const uvcImage = document.getElementById('uvc');
+/* The same picture, on the attract screen. A second <video> holding the same
+ * MediaStream rather than a second camera: a device that will only hand out
+ * one stream at a time — which is most of them — would otherwise leave this
+ * panel black the moment the capture screen took the camera. */
+const attractVideo = document.getElementById('attract-video');
+const attractUvc = document.getElementById('attract-uvc');
+const attractFallback = document.getElementById('attract-fallback');
+
+/* Point every preview at the stream in hand, and show or hide the stand-in
+ * copy depending on whether there is a picture to show. One place does this
+ * so a new preview surface cannot be forgotten in one of the four paths that
+ * open a camera. */
+function attachPreviews(){
+  const live = !!(stream && stream.getVideoTracks().some(t => t.readyState === 'live'));
+  video.srcObject = stream;
+  if (attractVideo) {
+    attractVideo.srcObject = stream;
+    if (stream) { try { attractVideo.play(); } catch {} }
+  }
+  if (attractFallback) attractFallback.hidden = live || uvc.running;
+}
 const camMsg = document.getElementById('cam-msg');
 let stream = null;
 
@@ -1710,14 +1720,21 @@ function showUvc(on){
     // stream from the last session and the picture never starts.
     let path = '/__camera/stream.mjpg';
     try { if (NATIVE.uvcStreamPath) path = NATIVE.uvcStreamPath(); } catch {}
-    uvcImage.src = path + '?t=' + Date.now();
+    const src = path + '?t=' + Date.now();
+    uvcImage.src = src;
     uvcImage.hidden = false;
     video.hidden = true;
     camMsg.hidden = true;
+    if (attractUvc) { attractUvc.src = src; attractUvc.hidden = false; }
+    if (attractVideo) attractVideo.hidden = true;
+    if (attractFallback) attractFallback.hidden = true;
   } else {
     uvcImage.removeAttribute('src');
     uvcImage.hidden = true;
     video.hidden = false;
+    if (attractUvc) { attractUvc.removeAttribute('src'); attractUvc.hidden = true; }
+    if (attractVideo) attractVideo.hidden = false;
+    attachPreviews();
   }
   applyMirror();
 }
@@ -1880,7 +1897,7 @@ async function upgradeToExternalCamera(){
     });
     stopCamera();
     stream = better;
-    video.srcObject = stream;
+    attachPreviews();
     try { await video.play(); } catch {}
   } catch {
     // The built-in one is already running and working. Keep it.
@@ -1923,7 +1940,7 @@ async function startCamera(){
       return false;
     }
   }
-  video.srcObject = stream;
+  attachPreviews();
   camMsg.hidden = true;
   try { await video.play(); } catch {}
   await upgradeToExternalCamera();
@@ -1954,7 +1971,7 @@ function stopCamera(){
   if (!stream) return;
   stream.getTracks().forEach(t => t.stop());
   stream = null;
-  video.srcObject = null;
+  attachPreviews();
 }
 
 /* Plug a camera in and look for it again, from Admin.
@@ -2206,6 +2223,10 @@ function go(step){
   // The back arrow is the ✕ of this language: present only inside a session.
   el('#hdr-back').hidden = (step === 'attract');
   if (step === 'capture') updateShotCount();
+  // The attract screen is a mirror now, so it needs the camera as much as the
+  // capture screen does. Failure is ignored: the stand-in copy is already
+  // showing underneath and there is nobody to tell.
+  if (step === 'attract') startCamera().catch(() => {});
   restartIdle();
 }
 
@@ -2259,9 +2280,14 @@ function abandon(){
   session.marks.clear();
   session.sheet = null;
   session.copies = settings.defaultCopies;
-  // Holding the camera is what keeps the permission prompt off the next
-  // guest's face. See HOLD_CAMERA.
-  if (!HOLD_CAMERA) stopCamera();
+  /* The camera is no longer released here at all.
+   *
+   * It used to be, everywhere except iOS, where holding it is what keeps the
+   * permission prompt off the next guest's face. Now that the attract screen
+   * shows a live mirror there is nothing to release it *to*: dropping the
+   * stream would black out the panel a guest is standing in front of, and the
+   * next session would have to take it straight back. A booth's camera is on
+   * for as long as the booth is. */
   go('attract');
 }
 
@@ -3889,8 +3915,11 @@ async function listCameras(){
 }
 
 function applyMirror(){
-  video.classList.toggle('mirror', !!settings.mirrorPreview);
-  uvcImage.classList.toggle('mirror', !!settings.mirrorPreview);
+  const on = !!settings.mirrorPreview;
+  video.classList.toggle('mirror', on);
+  uvcImage.classList.toggle('mirror', on);
+  if (attractVideo) attractVideo.classList.toggle('mirror', on);
+  if (attractUvc) attractUvc.classList.toggle('mirror', on);
 }
 
 /// Publishes the chosen paper's shape as a CSS variable, so every well that
