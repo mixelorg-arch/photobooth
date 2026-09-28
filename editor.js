@@ -867,6 +867,10 @@ function edDelete(){
   if (!ED.editingId) return;
   if (ED.guard !== 'delete') { ED.guard = 'delete'; edSay('PRESS DELETE AGAIN TO REMOVE THIS LAYOUT FOR GOOD.'); return; }
   ED.guard = null;
+  // Recorded before the layout goes, so the deletion can travel to the other
+  // devices. Without this the next sync would find it still on the server and
+  // put it back.
+  settings.syncTombstones = (settings.syncTombstones || []).concat([ED.editingId]);
   settings.customLayouts = (settings.customLayouts || []).filter(l => l.id !== ED.editingId);
   settings.guestLayoutIDs = settings.guestLayoutIDs.filter(id => id !== ED.editingId);
   saveSettings(); registerCustom(settings); edBoothRefresh();
@@ -878,11 +882,15 @@ function edDelete(){
 }
 
 /* The rest of the booth caches layouts in the tiles and the shape of the
- * sheet wells; after a save or a delete they have to hear about it. */
+ * sheet wells; after a save or a delete they have to hear about it. And so,
+ * a couple of seconds later, do the other devices — this is the one place
+ * every path that changes the layout list passes through, which is why the
+ * nudge lives here rather than at each call site. */
 function edBoothRefresh(){
   buildLayoutTiles();
   applySheetAspect();
   updateAttractCount();
+  if (typeof syncSoon === 'function') syncSoon();
 }
 
 function edToggleOffer(id){

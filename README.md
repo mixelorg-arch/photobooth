@@ -392,6 +392,63 @@ stickers and SELPHY postcards means switching the default too — change PAPER i
 Admin and the printer with `-p` together, or a 100 x 150 sticker design will go
 to the postcard printer.
 
+## Layout sync
+
+Layouts made on one device turn up on the others. **Admin → SYNC.**
+
+Put the same code into the browser, the iPad and the tablet and they stay in
+step — on every launch, and a couple of seconds after a layout is saved or
+deleted. There are no accounts: a booth has nobody to log in, so identity is a
+long random code generated on one device and typed into the others.
+
+**Only layouts travel**, and the custom paper sizes they need. `syncPayload()`
+is the one function that composes what goes up and it reads exactly two
+settings keys. No photograph is ever sent; session photos live in the tab and
+are dropped when the session ends.
+
+### What this cost
+
+The Android build now carries `INTERNET`, which it deliberately went without.
+That permission made "no photograph leaves this tablet" something the
+operating system enforced. It is now a promise about this code. Android has no
+LAN-only permission — a socket to your own wifi needs the same grant as a
+socket to anywhere — so there was no smaller version of the trade.
+
+### How access works
+
+There are no RLS policies, because with no accounts a policy has nothing to
+check against. Instead the table is closed to `anon` entirely and the only way
+in is two `SECURITY DEFINER` functions that both demand the sync code. The
+anon key is public — it sits in the deployed JavaScript of several of these
+apps — and on its own it opens nothing.
+
+The code is a **shared secret, not a login**. Anyone you give it to can read
+and overwrite the layouts under it. Fine for designs; not for anything
+private.
+
+### Three things that only showed up in testing
+
+* **Pull before push.** The other order looks safer and is not: a device that
+  has not heard about a deletion still holds the layout, and pushing first
+  writes it back over the tombstone. Measured before the fix — the delete
+  never travelled at all.
+* **Deletions need tombstones.** A layout simply absent from a push is
+  indistinguishable, to every other device, from one they have and you have
+  not seen yet — so it comes straight back.
+* **A pending tombstone has to win locally.** The pull runs first, the server
+  still shows the layout alive, and absorbing that row puts it back on the
+  very device that just deleted it. Holding the tombstone as local truth until
+  it has been sent is what stops a delete flickering back in front of you.
+
+Verified against a simulated server: push, pull on a fresh device, delete and
+create, resync, idempotent repeat, and an offline run that fails quietly and
+leaves the layouts untouched.
+
+### Setting it up
+
+Run `supabase/schema.sql` once in the SQL editor of the `ledger` project. It
+is idempotent.
+
 ## The tape overlay
 
 Both camera wells are dressed as a camcorder's on-screen display, from the
