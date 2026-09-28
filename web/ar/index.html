@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>SnapBox — hologram</title>
+<!--
+  The hologram.
+
+  A guest scans the QR on their print, lands here, points the phone at the
+  marker beside the photograph, and their shots play floating above it.
+
+  Two decisions worth knowing, both forced by measurement rather than taste:
+
+  1. AR.js with a *pattern* marker, not MindAR's natural-feature tracking.
+     NFT wants rich, stable, high-contrast detail. A one-bit dithered thermal
+     print is a field of noise whose "features" shift with print darkness,
+     paper and light. The same printer renders solid black shapes perfectly —
+     so the thing being tracked is a designed black-and-white marker, and the
+     photograph is left alone to be a photograph.
+
+  2. The animation comes from a sprite sheet, not from the GIF. An animated
+     GIF cannot drive a WebGL texture: `drawImage` of one returns the first
+     frame and only the first frame — measured, ten samples over three
+     seconds, one distinct hash. So the frames arrive as a single PNG strip
+     and this page advances them itself. The GIF still exists, for the guest
+     to keep; it is built here, on the phone, from the same strip.
+-->
+<style>
+  :root{--ink:#0B0B0B;--paper:#fff}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#000;color:#fff;
+            font-family:ui-monospace,"SF Mono",Menlo,monospace}
+  .hud{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:14px;
+       display:flex;flex-direction:column;gap:10px;align-items:center;
+       pointer-events:none}
+  .card{background:rgba(11,11,11,.82);border:2px solid #fff;padding:10px 14px;
+        font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+        text-align:center;max-width:min(520px,92vw)}
+  .btn{pointer-events:auto;background:#F5D400;color:#0B0B0B;border:2px solid #0B0B0B;
+       font:700 14px/1 ui-monospace,monospace;letter-spacing:.1em;padding:16px 22px;
+       text-transform:uppercase;cursor:pointer}
+  .btn[hidden]{display:none}
+  .top{position:fixed;top:0;left:0;right:0;z-index:20;padding:12px;
+       display:flex;gap:10px;align-items:center;pointer-events:none}
+  .tag{background:rgba(11,11,11,.82);border:2px solid #fff;padding:6px 10px;
+       font-size:11px;letter-spacing:.14em}
+  #fallback{position:fixed;inset:0;z-index:15;display:none;
+            align-items:center;justify-content:center;background:#000}
+  #fallback img{max-width:92vw;max-height:70vh;image-rendering:auto}
+</style>
+<body>
+
+<div class="top">
+  <span class="tag">SNAPBOX</span>
+  <span class="tag" id="state">LOADING</span>
+</div>
+
+<!-- Shown when there is no camera, no marker for a long while, or the
+     browser will not do AR: the guest still gets their pictures. -->
+<div id="fallback"><img id="fallback-img" alt=""></div>
+
+<div class="hud">
+  <div class="card" id="hint">POINT THE CAMERA AT THE SQUARE MARKER ON YOUR PRINT</div>
+  <button class="btn" id="save" hidden>SAVE AS GIF</button>
+  <button class="btn" id="noar" hidden>JUST SHOW ME THE PHOTOS</button>
+</div>
+
+<script src="../gif.js"></script>
+<script>
+/* The strip: one PNG holding every frame side by side, plus how many. Both
+ * come from the print's QR, so this page needs no directory and no lookup. */
+const params = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+const stripURL = params.get('s') || '';
+const frameCount = Math.max(1, Math.min(12, parseInt(params.get('n'), 10) || 4));
+const frameMs = Math.max(80, Math.min(2000, parseInt(params.get('d'), 10) || 400));
+
+const state = document.getElementById('state');
+const hint = document.getElementById('hint');
+const saveBtn = document.getElementById('save');
+const noarBtn = document.getElementById('noar');
+const say = t => { state.textContent = t; };
+
+/* The frames, cut out of the strip once so nothing slices per tick. */
+const frames = [];
+let frameW = 0, frameH = 0;
+
+function loadStrip(){
+  return new Promise((resolve, reject) => {
+    if (!stripURL) return reject(new Error('no strip in the link'));
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      frameW = Math.round(img.naturalWidth / frameCount);
+      frameH = img.naturalHeight;
+      for (let i = 0; i < frameCount; i++) {
+        const c = document.createElement('canvas');
+        c.width = frameW; c.height = frameH;
+        c.getContext('2d').drawImage(img, i * frameW, 0, frameW, frameH,
+                                     0, 0, frameW, frameH);
+        frames.push(c);
+      }
+      resolve();
+    };
+    img.onerror = () => reject(new Error('the pictures would not load'));
+    img.src = stripURL;
+  });
+}
+
+/* The surface the hologram is painted on. A canvas, redrawn on a timer and
+ * flagged for upload to the GPU — which is the part an animated GIF cannot
+ * do for us. */
+const surface = document.createElement('canvas');
+let surfaceCtx = null, current = -1;
+
+function startAnimation(){
+  surface.width = frameW; surface.height = frameH;
+  surfaceCtx = surface.getContext('2d');
+  let i = 0;
+  const tick = () => {
+    surfaceCtx.clearRect(0, 0, frameW, frameH);
+    surfaceCtx.drawImage(frames[i], 0, 0);
+    current = i;
+    i = (i + 1) % frames.length;
+    const tex = surface.__texture;
+    if (tex) tex.needsUpdate = true;
+  };
+  tick();
+  setInterval(tick, frameMs);
+}
+
+/* The keepsake. Encoded here rather than at the booth, from the same strip,
+ * so the booth stores one file instead of two. */
+saveBtn.addEventListener('click', () => {
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'BUILDING…';
+  setTimeout(() => {
+    try {
+      const blob = encodeGIF(frames, {delay: frameMs, mono: false});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'snapbox.gif';
+      a.click();
+      saveBtn.textContent = 'SAVED';
+    } catch (e) {
+      saveBtn.textContent = 'COULD NOT BUILD THE GIF';
+    }
+    saveBtn.disabled = false;
+  }, 30);
+});
+
+/* Without AR the guest still gets their pictures. A booth that shows nothing
+ * because a phone is too old is worse than one that never promised AR. */
+function showFallback(reason){
+  document.getElementById('fallback').style.display = 'flex';
+  hint.textContent = reason;
+  noarBtn.hidden = true;
+  const img = document.getElementById('fallback-img');
+  const paint = () => { img.src = frames[current < 0 ? 0 : current].toDataURL(); };
+  paint(); setInterval(paint, frameMs);
+  say('PHOTOS');
+}
+noarBtn.addEventListener('click', () => showFallback('YOUR PHOTOS'));
+
+async function boot(){
+  try {
+    await loadStrip();
+  } catch (err) {
+    say('NO PHOTOS');
+    hint.textContent = (err && err.message ? err.message : 'something went wrong') +
+                       ' — scan the code on your print again.';
+    return;
+  }
+  startAnimation();
+  saveBtn.hidden = false;
+  noarBtn.hidden = false;
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
+      !window.isSecureContext) {
+    showFallback('THIS BROWSER CANNOT DO AR — HERE ARE YOUR PHOTOS');
+    return;
+  }
+  say('POINT AT THE MARKER');
+  loadAR();
+}
+
+/* AR.js and A-Frame are big and only needed once there is something to show,
+ * so they are fetched after the pictures rather than before them. */
+function loadAR(){
+  const add = src => new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error(src));
+    document.head.appendChild(s);
+  });
+  add('https://aframe.io/releases/1.5.0/aframe.min.js')
+    .then(() => add('https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js'))
+    .then(buildScene)
+    .catch(() => showFallback('AR WOULD NOT LOAD — HERE ARE YOUR PHOTOS'));
+}
+
+function buildScene(){
+  const scene = document.createElement('a-scene');
+  scene.setAttribute('embedded', '');
+  scene.setAttribute('vr-mode-ui', 'enabled: false');
+  scene.setAttribute('renderer', 'antialias: true; alpha: true; precision: medium');
+  scene.setAttribute('arjs',
+    'sourceType: webcam; debugUIEnabled: false; detectionMode: mono; patternRatio: 0.5');
+
+  const marker = document.createElement('a-marker');
+  marker.setAttribute('type', 'pattern');
+  marker.setAttribute('url', 'marker.patt');
+  marker.setAttribute('smooth', 'true');
+  marker.setAttribute('smoothCount', '6');
+  marker.setAttribute('smoothTolerance', '0.02');
+
+  // The picture floats a little above the paper, which is what sells it as a
+  // hologram rather than a sticker: the parallax as the phone moves is the
+  // whole effect.
+  const plane = document.createElement('a-plane');
+  const aspect = frameH / frameW;
+  plane.setAttribute('width', 1.1);
+  plane.setAttribute('height', 1.1 * aspect);
+  plane.setAttribute('rotation', '-90 0 0');
+  plane.setAttribute('position', '0 0.45 0');
+  plane.setAttribute('material', 'shader: flat; transparent: true; side: double');
+  marker.appendChild(plane);
+
+  scene.appendChild(marker);
+  scene.appendChild(document.createElement('a-entity')).setAttribute('camera', '');
+  document.body.appendChild(scene);
+
+  // Hand the animating canvas to three.js as the plane's texture.
+  plane.addEventListener('loaded', () => {
+    const mesh = plane.getObject3D('mesh');
+    if (!mesh) return;
+    const THREE = window.AFRAME && window.AFRAME.THREE;
+    if (!THREE) return;
+    const tex = new THREE.CanvasTexture(surface);
+    tex.minFilter = THREE.LinearFilter;
+    surface.__texture = tex;
+    mesh.material.map = tex;
+    mesh.material.needsUpdate = true;
+  });
+
+  marker.addEventListener('markerFound', () => { say('TRACKING'); hint.textContent = 'HOLD STILL'; });
+  marker.addEventListener('markerLost', () => { say('LOOKING'); hint.textContent = 'POINT THE CAMERA AT THE SQUARE MARKER ON YOUR PRINT'; });
+
+  // Nothing found after a while is usually a phone that cannot, a print that
+  // has faded, or a room too dark — none of which the guest can diagnose.
+  setTimeout(() => {
+    if (state.textContent !== 'TRACKING') {
+      hint.textContent = 'STILL LOOKING — TAP BELOW IF YOU JUST WANT THE PHOTOS';
+    }
+  }, 15000);
+}
+
+window.addEventListener('load', boot);
+</script>

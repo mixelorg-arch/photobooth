@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+<rect width="600" height="600" fill="#FFFFFF"/>
+<rect x="48" y="48" width="504" height="504" fill="#000000"/>
+<rect x="174" y="174" width="252" height="252" fill="#FFFFFF"/>
+<g fill="#000000"><rect x="174.00" y="174.00" width="42.00" height="42.00"/><rect x="216.00" y="174.00" width="42.00" height="42.00"/><rect x="258.00" y="174.00" width="42.00" height="42.00"/><rect x="174.00" y="216.00" width="42.00" height="42.00"/><rect x="342.00" y="216.00" width="42.00" height="42.00"/><rect x="174.00" y="258.00" width="42.00" height="42.00"/><rect x="258.00" y="258.00" width="42.00" height="42.00"/><rect x="300.00" y="258.00" width="42.00" height="42.00"/><rect x="342.00" y="258.00" width="42.00" height="42.00"/><rect x="258.00" y="300.00" width="42.00" height="42.00"/><rect x="216.00" y="342.00" width="42.00" height="42.00"/><rect x="258.00" y="342.00" width="42.00" height="42.00"/><rect x="342.00" y="342.00" width="42.00" height="42.00"/><rect x="384.00" y="342.00" width="42.00" height="42.00"/><rect x="342.00" y="384.00" width="42.00" height="42.00"/><rect x="384.00" y="384.00" width="42.00" height="42.00"/></g>
+</svg>
