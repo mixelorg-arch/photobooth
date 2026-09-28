@@ -1525,6 +1525,22 @@ const DEFAULTS = {
   /// only record the booth can keep that the printer was ever reached.
   printerTestedAt: 0,
   printerTestedOn: '',
+  /* --- layout sync --- */
+  /// The shared secret that identifies one operator's set of layouts. Long
+  /// and random, generated on the device; see SYNC below for why it is a
+  /// code rather than an account.
+  syncCode: '',
+  /// Sync without being asked — on launch, and whenever a layout is saved.
+  syncAuto: true,
+  /// The server clock at the last successful pull, so the next one only asks
+  /// for what changed.
+  syncSince: '',
+  syncLastAt: 0,
+  syncLastNote: '',
+  /// Layouts deleted here that the other devices have not been told about
+  /// yet. Without these a delete would never travel: the next pull would
+  /// find the layout still on the server and put it straight back.
+  syncTombstones: [],
   /// Hide the print options from the guest: no copy count, no spec table,
   /// no SAVE PNG. Press PRINT and paper comes out. The operator's settings
   /// decide the copies.
@@ -3458,6 +3474,8 @@ async function renderAdmin(){
 
   if (!NATIVE) parts.push(printerSection());
 
+  parts.push(syncSection());
+
   parts.push(section('LAYOUT EDITOR', 'star', [
     row('YOUR LAYOUTS', '<div class="seg"><button class="on">' +
       (settings.customLayouts || []).length + ' MADE</button></div>'),
@@ -3687,6 +3705,44 @@ function toast(message){
   setTimeout(() => box.remove(), 6000);
 }
 
+/// Makes a fresh code from the console, after confirming, because changing
+/// it cuts this device off from the layouts saved under the old one.
+function newSyncCodeFromAdmin(){
+  const had = (settings.syncCode || '').trim();
+  if (had && !confirm('Replace the sync code?\n\nThis device will stop seeing the layouts stored under the old code. Any device you want to keep in step will need the new one.')) return;
+  settings.syncCode = newSyncCode();
+  settings.syncSince = '';
+  settings.syncLastNote = 'NEW CODE — NOT SYNCED YET';
+  saveSettings();
+  renderAdmin();
+}
+
+function syncSection(){
+  const code = (settings.syncCode || '').trim();
+  const when = settings.syncLastAt
+    ? new Date(settings.syncLastAt).toLocaleString() : 'NEVER';
+  const rows = [
+    row('SYNC CODE', field('syncCode', 'paste the code from your other device')),
+    row('AUTOMATIC', seg('syncAuto', [[true, 'ON'], [false, 'OFF']], settings.syncAuto)),
+    row('LAST SYNC', '<div class="seg"><button class="on">' +
+      escapeHTML(when + (settings.syncLastNote ? '  ·  ' + settings.syncLastNote : '')) +
+      '</button></div>'),
+    row('YOUR LAYOUTS', '<div class="seg"><button class="on">' +
+      (settings.customLayouts || []).length + ' HERE</button></div>'),
+    row('', '<button class="btn solid" data-act="sync-now" style="min-width:230px">' +
+      '<span class="px" data-cell="4">SYNC NOW</span></button>' +
+      '<span class="grow"></span>' +
+      '<button class="btn" data-act="sync-new-code" style="min-width:230px">' +
+      '<span class="px" data-cell="4">NEW CODE</span></button>'),
+  ];
+  rows.push(note(code ? 'info' : 'warn', code
+    ? 'Layouts made on any device using this code turn up on the others. Put the same code into the browser, the iPad and the tablet and they stay in step — with AUTOMATIC on, on every launch and a couple of seconds after a layout is saved.'
+    : 'No sync code yet. Press NEW CODE on the device that already has your layouts, then type that code into the others. There is no account to make: the code is the only thing that ties them together.'));
+  rows.push(note('warn', 'Only layouts and the paper sizes they need are sent. No photograph ever leaves the device — that is true of every build, and on the tablet it is now a promise about the code rather than something Android enforces, because sync needed the network permission the app used to go without.'));
+  rows.push(note('info', 'The code is a shared secret, not a login. Anyone you give it to can read and overwrite these layouts, so treat it like the key to a filing cabinet: fine for designs, not for anything private.'));
+  return section('SYNC', 'star', rows);
+}
+
 /* The printer, as much as a web page is allowed to know about it.
  *
  * Which is nothing. There is no API for listing printers in a browser and no
@@ -3911,6 +3967,10 @@ function wireAdmin(root){
 }
 
 function afterSettingChange(key){
+  // A changed code is a different set of layouts, so the next pull starts
+  // from the beginning rather than from this device's old cursor.
+  if (key === 'syncCode') { settings.syncSince = ''; syncSoon(); }
+  if (key === 'syncAuto') syncSoon();
   if (key === 'mirrorPreview') applyMirror();
   if (key === 'flashEnabled' || key === 'autoExposure') renderAdmin();
   if (key === 'printMode') renderAdmin();
@@ -3985,6 +4045,229 @@ function applySheetAspect(){
 }
 
 /* ==================================================================== *
+ * Layout sync
+ *
+ * Layouts made in one place turn up everywhere else. Nothing else does.
+ *
+ * **No photograph is ever sent.** The payload is built from the layout list
+ * and the custom paper sizes those layouts need, and from nothing else —
+ * `syncPayload` below is the only thing that composes it, and it reads two
+ * settings keys. Session photos live in the tab and are dropped when the
+ * session ends; there is no path from a captured frame to the network, and
+ * the server refuses anything that is not layout-shaped besides.
+ *
+ * This is why the Android build now carries the INTERNET permission it
+ * deliberately went without. That permission made "photographs cannot leave
+ * this tablet" a promise the operating system enforced; it is now a promise
+ * about this code. The trade bought sync and cost that guarantee, and it is
+ * worth being plain about which is which.
+ *
+ * There are no accounts. A booth has nobody to log in, so identity is a long
+ * random code generated on the device and typed into the others. It is a
+ * shared secret, not a login: anyone with the code can read and overwrite the
+ * layouts under it.
+ *
+ * Everything here fails quietly. A booth with no network is the normal case,
+ * not an error state, and a guest must never see a sync problem.
+ * ==================================================================== */
+
+const SYNC = {
+  url: 'https://snfukbofyadfrhuaggad.supabase.co',
+  // Public by design — it grants nothing on its own. The table is closed to
+  // this role entirely and the only way in is the two functions, both of
+  // which demand the sync code. See supabase/schema.sql.
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNuZnVrYm9meWFkZnJodWFnZ2FkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyNjY3NzUsImV4cCI6MjEwMzg0Mjc3NX0.VS7OJ0vTK97AITaiXcuoTE-cJ3-jdADT1fzniDtPTfo',
+  timeout: 12000,
+};
+
+let syncing = false;
+
+/// A code long enough that guessing it is not a strategy, grouped so it can
+/// be read aloud across a room without mistakes.
+function newSyncCode(){
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no I, O, 0, 1
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  const body = [...bytes].map(b => alphabet[b % alphabet.length]).join('');
+  return 'SNAP-' + body.match(/.{1,5}/g).join('-');
+}
+
+async function syncCall(fn, body){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SYNC.timeout);
+  try {
+    const res = await fetch(SYNC.url + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SYNC.anonKey,
+        'Authorization': 'Bearer ' + SYNC.anonKey,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('server said ' + res.status);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* What goes up: every custom layout, and the custom papers they sit on.
+ *
+ * Built here and only here, so there is one place to look when asking what
+ * this app sends. It reads `customLayouts` and `customMedia` and nothing
+ * else. */
+function syncPayload(){
+  const layouts = settings.customLayouts || [];
+  const papers = settings.customMedia || [];
+  const used = new Set(layouts.map(l => l.mediaID));
+  const live = layouts.map(layout => ({
+    id: layout.id,
+    payload: {
+      layout,
+      // A layout is useless on a device that has never heard of its paper, so
+      // the paper travels with it.
+      paper: papers.find(m => m.id === layout.mediaID && used.has(m.id)) || null,
+    },
+  }));
+  // Deletions travel as records of their own. A layout that is simply absent
+  // from a push looks, to every other device, exactly like one they have and
+  // this device has not seen yet — so it would come straight back.
+  const gone = (settings.syncTombstones || []).map(id => ({
+    id, deleted: true, payload: {layout: {id}},
+  }));
+  return live.concat(gone);
+}
+
+/// Merge one pulled record in. Newest wins; a delete is a record too.
+function syncAbsorb(row){
+  const body = row.payload || {};
+  const layout = body.layout;
+  if (!layout || !layout.id) return false;
+
+  settings.customLayouts = settings.customLayouts || [];
+  settings.customMedia = settings.customMedia || [];
+  const at = settings.customLayouts.findIndex(l => l.id === layout.id);
+
+  /* A layout this device has deleted but not yet reported.
+   *
+   * The pull runs before the push, so the server still shows it alive — and
+   * absorbing that row puts the layout back on the very device that just
+   * deleted it, until the sync after next. Holding the tombstone as the
+   * local truth until it has been sent is what stops a delete flickering
+   * back into the list in front of the operator. */
+  if (!row.deleted && (settings.syncTombstones || []).includes(layout.id)) return false;
+
+  if (row.deleted) {
+    settings.syncTombstones = (settings.syncTombstones || [])
+      .filter(id => id !== layout.id);
+    if (at < 0) return false;
+    settings.customLayouts.splice(at, 1);
+    settings.guestLayoutIDs = (settings.guestLayoutIDs || []).filter(id => id !== layout.id);
+    return true;
+  }
+
+  if (body.paper && !(settings.customMedia || []).some(m => m.id === body.paper.id)) {
+    settings.customMedia.push(body.paper);
+  }
+  if (at < 0) { settings.customLayouts.push(layout); return true; }
+
+  // A pull always returns this device's own rows too. Replacing an identical
+  // layout with itself is not a change, and counting it as one makes the
+  // console report "2 LAYOUTS IN" every single time it syncs with nothing
+  // new — which teaches an operator to stop reading the line.
+  const same = JSON.stringify(settings.customLayouts[at]) === JSON.stringify(layout);
+  settings.customLayouts[at] = layout;
+  return !same;
+}
+
+/* One round trip: take what is there, then send what is here.
+ *
+ * **Pull first.** The other order looks safer and is not: a device that has
+ * not yet heard about a deletion still holds the layout, and pushing first
+ * writes it back over the tombstone — so deleting a layout on one device and
+ * syncing on another silently resurrects it. Measured, before this was fixed:
+ * the delete never travelled at all. Pulling first means this device learns
+ * about the deletion, drops the layout, and then pushes a state that no
+ * longer contains it.
+ *
+ * The cost of that order is a narrow last-write-wins window: edit a layout
+ * here while another device pushes the same one, sync after, and the other
+ * copy wins. For a design tool with one operator that is the right trade —
+ * losing an edit is recoverable, and a layout coming back from the dead every
+ * time you delete it is not.
+ *
+ * `quiet` is for the automatic runs, which must not put a message on a screen
+ * a guest can see.
+ */
+async function syncNow(quiet){
+  if (syncing) return false;
+  const code = (settings.syncCode || '').trim();
+  if (code.length < 16) {
+    settings.syncLastNote = 'NO SYNC CODE SET';
+    if (!quiet) renderAdmin();
+    return false;
+  }
+  syncing = true;
+  try {
+    const rows = await syncCall('snapbox_pull',
+      {p_code: code, p_since: settings.syncSince || '1970-01-01T00:00:00Z'});
+
+    let changed = 0, newest = settings.syncSince || '';
+    (rows || []).forEach(row => {
+      if (syncAbsorb(row)) changed++;
+      if (!newest || row.updated_at > newest) newest = row.updated_at;
+    });
+
+    // Built after absorbing, so anything the pull just deleted is already
+    // gone from what goes up.
+    const items = syncPayload();
+    const sentTombstones = (settings.syncTombstones || []).slice();
+    if (items.length) await syncCall('snapbox_push', {p_code: code, p_items: items});
+    // The server is holding them now, so this device need not keep repeating
+    // itself on every sync for the rest of its life.
+    if (sentTombstones.length) {
+      settings.syncTombstones = (settings.syncTombstones || [])
+        .filter(id => !sentTombstones.includes(id));
+    }
+
+    settings.syncSince = newest || settings.syncSince;
+    settings.syncLastAt = Date.now();
+    settings.syncLastNote = changed
+      ? changed + (changed === 1 ? ' LAYOUT IN' : ' LAYOUTS IN')
+      : 'UP TO DATE';
+    saveSettings();
+    if (changed) {
+      registerCustom(settings);
+      buildLayoutTiles();
+      updateAttractCount();
+    }
+    if (!quiet) renderAdmin();
+    return true;
+  } catch (err) {
+    // A booth with no network is the normal case, not a fault.
+    settings.syncLastNote = /abort/i.test(err && err.name || '')
+      ? 'NO ANSWER — CHECK THE NETWORK'
+      : 'COULD NOT SYNC: ' + (err && err.message ? err.message : 'unknown');
+    saveSettings();
+    if (!quiet) renderAdmin();
+    return false;
+  } finally {
+    syncing = false;
+  }
+}
+
+/// Called after anything that changes the layout list. Debounced, because
+/// saving in the editor fires it on every keystroke that lands.
+let syncSoonTimer = null;
+function syncSoon(){
+  if (!settings.syncAuto || !(settings.syncCode || '').trim()) return;
+  clearTimeout(syncSoonTimer);
+  syncSoonTimer = setTimeout(() => syncNow(true), 2500);
+}
+
+/* ==================================================================== *
  * Wiring
  * ==================================================================== */
 const ACTIONS = {
@@ -4007,6 +4290,8 @@ const ACTIONS = {
   'save-png': savePNG,
   'camera-rescan': rescanCameras,
   'printer-test': testPrint,
+  'sync-now': () => syncNow(false),
+  'sync-new-code': newSyncCodeFromAdmin,
 };
 
 document.addEventListener('click', e => {
@@ -4149,6 +4434,12 @@ tickClock();
 setInterval(tickClock, 20000);
 tickViewfinder();
 setInterval(tickViewfinder, 1000);
+
+// One sync on launch, so a booth picks up whatever was designed since it was
+// last switched on. Quiet and unhurried: it must not delay the first guest.
+if (settings.syncAuto && (settings.syncCode || '').trim()) {
+  setTimeout(() => syncNow(true), 1500);
+}
 go('attract');
 
 /* Take the camera at launch on iPadOS.
@@ -4188,6 +4479,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 thermalize, sheetDataURL, liftShadows, localMean, smoothing,
                 raiseFlash, dropFlash, normaliseExposure, testPrint,
                 tickViewfinder, setViewfinderRecording,
+                syncNow, syncPayload, syncAbsorb, newSyncCode,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
