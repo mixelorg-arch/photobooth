@@ -392,6 +392,40 @@ stickers and SELPHY postcards means switching the default too — change PAPER i
 Admin and the printer with `-p` together, or a 100 x 150 sticker design will go
 to the postcard printer.
 
+## The tape overlay
+
+Both camera wells are dressed as a camcorder's on-screen display, from the
+reference: white monospace burned into the corners of the picture.
+
+```
+CAMERA1                                    VCR TAPE
+PLAY >                                   ANA & MIGUEL
+00:00:00
+
+
+09:39
+28.09.2026 MON
+```
+
+Deliberately **no corner brackets, no vignette, no scan lines**. The reference
+is clean and the restraint is the point — the type alone is what makes a
+preview read as a recording rather than as a video call. A guest who
+recognises the language stands differently in front of it.
+
+Two of the three readouts are real. The clock is the wall clock; the timecode
+counts from the moment the session began, so a guest glancing at it while
+posing sees a number that means something. The medium is the event name,
+because that is what this particular tape is of.
+
+`PLAY >` while the booth is idle, `REC` with a blinking red dot once the
+shutter sequence is running — blinking because a steady red light is what a
+*fault* looks like on real hardware, and every camcorder blinked while it
+rolled. Measured across a session: PLAY at attract, REC mid-capture, PLAY
+again at review.
+
+All of it is furniture: `pointer-events:none` throughout so nothing can
+swallow a tap, and none of it reaches the printed sheet.
+
 ## The start page is a mirror
 
 The attract screen shows the live camera, full width, with the call to action

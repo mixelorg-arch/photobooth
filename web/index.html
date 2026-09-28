@@ -59,17 +59,34 @@
             <video id="attract-video" playsinline muted autoplay></video>
             <img id="attract-uvc" alt="" hidden>
             <div class="grid-overlay"></div>
+            <!-- The tape overlay.
+                 Built from the reference: white monospace in corner-anchored
+                 blocks over the picture, the way a camcorder burned its state
+                 into the tape. Deliberately no brackets, no vignette and no
+                 scan lines — the reference is clean, and the type alone is
+                 what makes it read as a recording. Furniture only: none of it
+                 is interactive and none of it reaches the print. -->
+            <div class="vf" aria-hidden="true">
+              <div class="vf-b tl">
+                <span class="vf-l">CAMERA1</span>
+                <span class="vf-l vf-state"><i class="vf-dot"></i><em>PLAY</em><b>&#9654;</b></span>
+                <span class="vf-l vf-tc">00:00:00</span>
+              </div>
+              <div class="vf-b tr">
+                <span class="vf-l">VCR TAPE</span>
+                <span class="vf-l vf-name">PHOTOBOOTH</span>
+              </div>
+              <div class="vf-b bl">
+                <span class="vf-l vf-clock">00:00</span>
+                <span class="vf-l vf-date">01.01.1997 WED</span>
+              </div>
+            </div>
             <!-- Shown until a picture arrives, and whenever there is none:
                  a black rectangle with no explanation reads as broken. -->
             <div class="attract-fallback" id="attract-fallback">
               <span class="ic" data-icon="eyeball" data-size="104" data-accent="#A9A2CE"></span>
               <span class="px" data-cell="4">PHOTOS IN A MINUTE</span>
               <span class="px dim" data-cell="3">PRINTED ON THE SPOT</span>
-            </div>
-            <div class="attract-tag">
-              <span class="px" data-cell="3">LIVE</span>
-              <span class="lead"></span>
-              <span class="px dim" data-cell="3">STEP INTO FRAME</span>
             </div>
           </div>
         </div>
@@ -122,6 +139,28 @@
                  frames rather than shuttling them through JavaScript. -->
             <img id="uvc" alt="" hidden>
             <div class="grid-overlay"></div>
+            <!-- The tape overlay.
+                 Built from the reference: white monospace in corner-anchored
+                 blocks over the picture, the way a camcorder burned its state
+                 into the tape. Deliberately no brackets, no vignette and no
+                 scan lines — the reference is clean, and the type alone is
+                 what makes it read as a recording. Furniture only: none of it
+                 is interactive and none of it reaches the print. -->
+            <div class="vf" aria-hidden="true">
+              <div class="vf-b tl">
+                <span class="vf-l">CAMERA1</span>
+                <span class="vf-l vf-state"><i class="vf-dot"></i><em>PLAY</em><b>&#9654;</b></span>
+                <span class="vf-l vf-tc">00:00:00</span>
+              </div>
+              <div class="vf-b tr">
+                <span class="vf-l">VCR TAPE</span>
+                <span class="vf-l vf-name">PHOTOBOOTH</span>
+              </div>
+              <div class="vf-b bl">
+                <span class="vf-l vf-clock">00:00</span>
+                <span class="vf-l vf-date">01.01.1997 WED</span>
+              </div>
+            </div>
             <div class="guide" id="guide"></div>
             <!-- The countdown lives *on* the preview, not over it: a guest
                  has to see their own face while the numbers run. -->
