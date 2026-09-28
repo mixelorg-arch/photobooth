@@ -666,11 +666,9 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .attract-fallback .px{color:var(--paper)}
 .attract-fallback .px.dim{color:#9A9A9A}
 
-/* A caption strip along the foot of the preview, in the panel language. */
-.attract-tag{position:absolute;left:10px;right:10px;bottom:10px;display:flex;
-             align-items:center;gap:12px;padding:8px 12px;background:var(--paper);
-             border:var(--rule-thin) solid var(--ink)}
-.attract-tag .lead{flex:1}
+/* The caption strip that used to sit along the foot of the preview is gone:
+   the tape overlay says PLAY and REC in the same corner and says it better,
+   and two bars of chrome in one well is one too many. */
 
 /* The call to action sits under the mirror, not over it: a button laid across
    someone's face is the one thing worse than no preview at all. */
@@ -682,7 +680,6 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   .attract-foot{flex-wrap:wrap}
   .attract-copy{flex-basis:100%}
   .attract-go{min-width:100%}
-  .attract-tag{left:6px;right:6px;bottom:6px;padding:6px 8px}
 }
 
 /* Give the mirror the argument. The call to action was 118px of a 512px
@@ -691,3 +688,74 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .attract-foot .btn.huge{min-height:84px}
 [data-screen="attract"] .pad{gap:10px}
 [data-screen="attract"] .mod-in.tight{padding:var(--rule-thin)}
+
+/* ==================================================================== *
+ * The tape overlay.
+ *
+ * Taken from the reference: a camcorder's on-screen display, burned into the
+ * corners of the picture. White monospace on the live image, nothing else —
+ * no corner brackets, no vignette, no scan lines. The reference is clean, and
+ * the restraint is why it reads as a recording rather than as a filter.
+ *
+ * Three blocks, each a stack of short lines:
+ *
+ *   top left     CAMERA1 / PLAY > / 00:00:00      what and how long
+ *   top right    VCR TAPE / <event>               the medium
+ *   bottom left  11:20 / 28.09.2026 SAT           the imprint
+ *
+ * All of it is furniture: `pointer-events:none` throughout so nothing can
+ * swallow a tap, and none of it is in the printed sheet.
+ * ==================================================================== */
+.vf{position:absolute;inset:0;pointer-events:none;z-index:3;
+    font-family:var(--mono);color:#FFFFFF;
+    /* A soft bloom, because this type was a CRT overlay and a hairline white
+       on a bright face would otherwise disappear. */
+    text-shadow:0 0 6px rgba(255,255,255,.25),0 2px 3px rgba(0,0,0,.95)}
+
+.vf-b{position:absolute;display:flex;flex-direction:column;gap:5px}
+.vf-b.tl{top:16px;left:18px;align-items:flex-start}
+.vf-b.tr{top:16px;right:18px;align-items:flex-end;text-align:right}
+.vf-b.bl{bottom:16px;left:18px;align-items:flex-start}
+
+.vf-l{font-size:17px;font-weight:700;letter-spacing:.11em;line-height:1.1;
+      white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* The transport state. PLAY while the booth is idle, REC once the shutter
+   sequence is running — the one moment a guest needs to know the difference. */
+.vf-state{display:flex;align-items:center;gap:8px}
+.vf-state b{font-size:15px;line-height:1}
+.vf-dot{width:12px;height:12px;border-radius:50%;background:#E23B2E;flex:none;
+        display:none;box-shadow:0 0 8px rgba(226,59,46,.8)}
+/* Blinking, not steady: a steady red light is what a fault looks like on real
+   hardware, and every camcorder blinked while it rolled. */
+.vf.rec .vf-dot{display:block;animation:vf-blink 1s steps(2,end) infinite}
+.vf.rec .vf-state b{display:none}
+@keyframes vf-blink{50%{opacity:.12}}
+
+.vf-clock{font-size:20px}
+.vf-date{font-size:20px}
+
+/* The overlay belongs to the picture, so it scales with the well rather than
+   sitting at one size on every screen. */
+@media (max-width: 700px){
+  .vf-b.tl,.vf-b.tr{top:10px}
+  .vf-b.bl{bottom:10px}
+  .vf-b.tl,.vf-b.bl{left:11px}
+  .vf-b.tr{right:11px}
+  .vf-l{font-size:12px;letter-spacing:.09em}
+  .vf-clock,.vf-date{font-size:14px}
+  .vf-dot{width:9px;height:9px}
+}
+
+/* The crop guide and the countdown sit above the tape furniture. */
+.guide{z-index:4}
+.osd{z-index:6}
+
+/* On the capture screen the countdown's own bar occupies the foot of the
+   well, so the imprint moves up to clear it. It stays bottom-left — that is
+   where the reference puts it and where a camcorder burned it — just above
+   the bar rather than under it. */
+[data-screen="capture"] .vf-b.bl{bottom:58px}
+@media (max-width: 700px){
+  [data-screen="capture"] .vf-b.bl{bottom:46px}
+}

@@ -1679,6 +1679,45 @@ const attractFallback = document.getElementById('attract-fallback');
  * copy depending on whether there is a picture to show. One place does this
  * so a new preview surface cannot be forgotten in one of the four paths that
  * open a camera. */
+/* The tape overlay's readouts.
+ *
+ * Two of the three are real: the clock is the wall clock, and the timecode
+ * counts from the moment the current session began — so a guest who glances
+ * at it while posing sees a number that means something. The third, the
+ * medium, is the event name, because that is what this particular tape is of.
+ *
+ * Both camera wells carry a copy of the overlay, so everything here writes to
+ * every matching element rather than to an id.
+ */
+const VF_DAYS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+let vfStarted = 0;
+
+function vfWrite(selector, text){
+  document.querySelectorAll('.vf ' + selector).forEach(n => { n.textContent = text; });
+}
+
+function tickViewfinder(){
+  const now = new Date();
+  const p2 = n => String(n).padStart(2, '0');
+
+  vfWrite('.vf-clock', p2(now.getHours()) + ':' + p2(now.getMinutes()));
+  vfWrite('.vf-date', p2(now.getDate()) + '.' + p2(now.getMonth() + 1) + '.' +
+                      now.getFullYear() + ' ' + VF_DAYS[now.getDay()]);
+
+  // Counts the session, not the clock: it resets when a guest starts.
+  const secs = Math.max(0, Math.floor((Date.now() - (vfStarted || Date.now())) / 1000));
+  vfWrite('.vf-tc', p2(Math.floor(secs / 3600)) + ':' +
+                    p2(Math.floor(secs / 60) % 60) + ':' + p2(secs % 60));
+
+  vfWrite('.vf-name', (settings.eventName || 'PHOTOBOOTH').toUpperCase().slice(0, 16));
+}
+
+/// REC while the shutter sequence is running, PLAY the rest of the time.
+function setViewfinderRecording(on){
+  document.querySelectorAll('.vf').forEach(n => n.classList.toggle('rec', !!on));
+  vfWrite('.vf-state em', on ? 'REC' : 'PLAY');
+}
+
 function attachPreviews(){
   const live = !!(stream && stream.getVideoTracks().some(t => t.readyState === 'live'));
   video.srcObject = stream;
@@ -2244,6 +2283,7 @@ function restartIdle(){
 
 function begin(){
   keepAwake();
+  vfStarted = Date.now();
   session.photos = [];
   session.times = [];
   session.marks.clear();
@@ -2273,6 +2313,7 @@ function abandon(){
   // tap — the editor decides.
   if (session.step === 'editor' && typeof editorBack === 'function') { editorBack(); return; }
   session.captureToken++;
+  setViewfinderRecording(false);
   clearTimeout(session.idleTimer);
   clearTimeout(session.thankYouTimer);
   session.photos = [];
@@ -2336,6 +2377,7 @@ async function runCaptureSequence(targets){
   applyGuide();
   buildShotStrip();
   if (!ok) return;                     // the camera message is already up
+  setViewfinderRecording(true);
 
   for (let i = 0; i < slots.length; i++) {
     if (token !== session.captureToken) return;
@@ -2363,6 +2405,7 @@ async function runCaptureSequence(targets){
   }
 
   if (token !== session.captureToken) return;
+  setViewfinderRecording(false);
   shotIndex = 0;
   retaking = false;
   compose();
@@ -4104,6 +4147,8 @@ updateCopies();
 buildLayoutTiles();
 tickClock();
 setInterval(tickClock, 20000);
+tickViewfinder();
+setInterval(tickViewfinder, 1000);
 go('attract');
 
 /* Take the camera at launch on iPadOS.
@@ -4142,6 +4187,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 printPageCSS, printFromDocument, rescanCameras,
                 thermalize, sheetDataURL, liftShadows, localMean, smoothing,
                 raiseFlash, dropFlash, normaliseExposure, testPrint,
+                tickViewfinder, setViewfinderRecording,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
