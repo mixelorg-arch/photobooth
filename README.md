@@ -440,6 +440,16 @@ finding the lens. It also gave the screen something to do with the space: the
 old start page was a 720px panel centred in a field of white, which on a
 tablet left most of the glass idle.
 
+The chrome around it is squeezed to the minimum that still reads: the label
+strip is 30px, the padding is a hairline, and the copy is one centred line
+rather than a stacked column. The call to action is **centred under the
+picture** — it used to sit right-aligned with the copy on the left, which left
+a lane of empty paper between them and made the button something you found
+rather than something you were aimed at. Measured across three stage shapes:
+the mirror takes **73%** of a tablet in landscape, **86%** in portrait and
+**79%** on a phone, with the button centred and everything inside the stage in
+all three.
+
 **It shares the capture screen's stream rather than opening a second camera.**
 Two `<video>` elements can hold the same MediaStream, and a device that will
 only hand out one at a time — which is most of them — would otherwise leave
