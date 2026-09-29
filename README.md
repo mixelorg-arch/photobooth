@@ -416,6 +416,30 @@ worked before changes, and over the point where a small sticker starts
 offering layouts that waste the paper. On 50 x 40 that leaves the two single
 shots, the two-up, and the pack.
 
+### Setting the shot count
+
+**Editor → LAYOUT → SHOTS**, 1 to 8.
+
+The panel shows one of two things, because the two cases are genuinely
+different and a single number would sometimes lie:
+
+* **One photo box** — the count is yours to set, and the layout prints once
+  per shot. Eight shots, eight labels.
+* **Several photo boxes** — the count is however many different pictures the
+  boxes ask for, all on one sheet, so it is shown rather than edited. Setting
+  it by hand would contradict them.
+
+With a pack open, a **PREVIEWING** row appears with one button per sheet. The
+sheets differ only by photograph and by number, and the number is the thing
+most likely to be wrong, so it has to be possible to look at each one. `{i}`
+and `{of}` resolve in the preview too — otherwise a four-sticker pack would
+read "1/1" on screen and nobody would find out until a hundred were printed.
+
+Eight is the ceiling: a session is a queue, and eight countdowns plus eight
+labels is already a couple of minutes with somebody waiting behind. A value
+over it snaps the field back to 8 rather than accepting the number and
+quietly doing something else.
+
 ### How a pack prints
 
 `pack: 4` on a layout makes it render once per photograph: the layout holds a
