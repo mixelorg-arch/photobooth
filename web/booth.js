@@ -1342,7 +1342,11 @@ function layoutToCanvas(tpl, media, brand){
     mono: tpl.mono !== false, elements: [],
   };
   if (tpl.kind === 'canvas') {
+    // `pack` travels with the layout. Without it, opening the four-sticker
+    // pack in the editor quietly turned it into a one-shot layout, and
+    // saving would have written that back.
     return Object.assign(base, {length: tpl.length, mono: !!tpl.mono,
+      pack: tpl.pack > 1 ? tpl.pack : undefined,
       elements: JSON.parse(JSON.stringify(tpl.elements || []))});
   }
   return media.flow ? receiptToCanvas(tpl, media, brand, base)

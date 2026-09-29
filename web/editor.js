@@ -93,12 +93,31 @@ function edSamplePhotos(){
 
 /* What the tokens resolve to in the preview: the booth's real settings, and
  * plausible timings for the shot list so it reads like a print. */
+/* The photographs the stage shows.
+ *
+ * A pack's layout holds one photo box reading src 0, so previewing sheet 3
+ * means handing it the third sample rather than the first — otherwise every
+ * sheet of the pack looks the same and the preview teaches nothing. */
+function edPreviewPhotos(){
+  const all = edSamplePhotos();
+  if (!(ED.tpl.pack > 1)) return all;
+  const i = Math.min(Math.max(1, ED.packPreview || 1), ED.tpl.pack) - 1;
+  return [all[i % all.length]];
+}
+
 function edBrand(){
   const brand = branding(ED.tpl);
   if (ED.samples) {
     brand.tracks = brand.tracks.map((t, i) => ({label: t.label, time: mmss(i * 7 + (i ? 3 : 0))}));
     brand.total = brand.tracks.length ? brand.tracks[brand.tracks.length - 1].time : '00:00';
   }
+  /* A pack prints several sheets and the editor shows one of them, so {i}
+   * and {of} need real numbers or the preview reads "1/1" on a four-sticker
+   * pack — which is exactly the kind of thing somebody only notices after
+   * printing a hundred. */
+  const n = Math.max(1, ED.tpl.pack | 0);
+  brand.index = Math.min(ED.packPreview || 1, n);
+  brand.packSize = n;
   return brand;
 }
 
@@ -292,7 +311,8 @@ function edDraw(){
   if (!paper || !ED.tpl) return;
   registerCanvasLayout(ED.tpl);
   ED.boxes = [];
-  const canvas = renderCanvas(ED.samples ? edSamplePhotos() : [], ED.tpl, edMedia(), edBrand(),
+  const shown = ED.samples ? edPreviewPhotos() : [];
+  const canvas = renderCanvas(shown, ED.tpl, edMedia(), edBrand(),
     ED.renderScale, {editing: true, boxes: ED.boxes, numberEmptySlots: !ED.samples});
   canvas.className = 'ed-canvas';
   const old = paper.querySelector('canvas');
@@ -526,6 +546,44 @@ function edLayoutPanel(){
     '>' + escapeHTML(label) + '</option>').join('') + '</select>');
   if (m.flow) html += F.field('ROLL LENGTH', F.num('L.length', mm(t.length || 150), 'mm', 1, 20));
   html += F.field('BACKGROUND', F.colour('L.background', t.background));
+  /* How many photographs a session takes on this layout, and what happens
+   * to them. The two cases are genuinely different and the panel says which
+   * one is in force rather than showing a number that sometimes lies:
+   *
+   *   one photo box   -> the shot count is yours to set, and the layout
+   *                      prints once per shot. Four shots, four labels.
+   *   several boxes   -> the count is however many different pictures the
+   *                      boxes ask for, and they all land on one sheet.
+   *                      Setting it by hand here would contradict them. */
+  const photoBoxes = t.elements.filter(e => e.t === 'photo');
+  const srcCount = new Set(photoBoxes.map(e => e.src | 0)).size;
+  if (photoBoxes.length === 1) {
+    html += F.field('SHOTS', F.num('L.pack', Math.max(1, t.pack || 1), '', 1, 1));
+    if (t.pack > 1) {
+      // Which sheet of the pack the stage is showing. They differ only by
+      // photograph and by number, but the number is the thing most likely to
+      // be wrong, so it has to be possible to look at.
+      const cur = Math.min(ED.packPreview || 1, t.pack);
+      html += F.field('PREVIEWING', '<div class="seg ed-seg">' +
+        Array.from({length: t.pack}, (_, i) =>
+          '<button data-act="ed-pack-preview" data-i="' + (i + 1) + '"' +
+          (i + 1 === cur ? ' class="on"' : '') + '>' + (i + 1) + '</button>').join('') +
+        '</div>');
+    }
+    html += note('info', (t.pack > 1
+      ? 'A session takes ' + t.pack + ' photographs and prints ' + t.pack + ' separate ' +
+        m.shortName + ' — one shot on each. Use {i} and {of} in a text box to number them, ' +
+        'the way the pack layout says 1/4.'
+      : 'One photograph, one print. Raise this to take several and print one ' +
+        m.shortName + ' per shot — a pack of stickers rather than a single one.') +
+      ' Up to 8.');
+  } else if (photoBoxes.length > 1) {
+    html += F.field('SHOTS', '<div class="seg ed-seg"><button class="on">' + srcCount +
+      ' ON ONE SHEET</button></div>');
+    html += note('info', 'This layout has ' + photoBoxes.length + ' photo boxes asking for ' +
+      srcCount + ' different ' + (srcCount === 1 ? 'picture' : 'pictures') + ', all on one sheet, ' +
+      'so the count comes from them. Delete all but one photo box to print a pack instead.');
+  }
   html += F.field('PHOTOS', F.seg('L.mono', [['true', 'MONO'], ['false', 'COLOUR']], String(!!t.mono)));
   html += F.field('ACCENT', F.colour('L.accent', t.accent));
   html += note('info', m.name + ': ' + mm(size.w) + ' × ' + mm(size.h) + ' mm at ' + m.dpi +
@@ -743,6 +801,21 @@ function edInput(key, raw, unit, index, owner){
   if (scope === 'L') {
     const t = ED.tpl;
     if (field === 'mono') t.mono = raw === 'true';
+    else if (field === 'pack') {
+      // Eight is the ceiling because a session is a queue: eight countdowns
+      // and eight labels is already a couple of minutes with somebody
+      // waiting behind. One means an ordinary layout, not a pack.
+      const n = Math.max(1, Math.min(8, Math.round(num) || 1));
+      if (n > 1) t.pack = n; else delete t.pack;
+      registerCanvasLayout(t);
+      /* The panel has to be rebuilt, not just the stage: the row of preview
+       * buttons is one per sheet, and the field itself must show the number
+       * that was accepted rather than the one that was typed — asking for 40
+       * and being silently given 8 while the box still reads 40 is worse
+       * than refusing it. Safe here because `change` has already fired, so
+       * nothing is mid-edit. */
+      edPanel();
+    }
     else if (field === 'length') { if (num > 0) t.length = num; }
     else if (field === 'mediaID') edSwitchPaper(raw);
     else t[field] = raw;
@@ -848,6 +921,9 @@ function edSave(asNew){
     elements: JSON.parse(JSON.stringify(t.elements)),
   };
   if (MEDIA[t.mediaID].flow) clean.length = t.length || 150;
+  // A pack is part of the layout, not a setting beside it: without this the
+  // shot count would survive until the editor closed and no further.
+  if (t.pack > 1) clean.pack = Math.max(2, Math.min(8, t.pack | 0));
 
   const list = settings.customLayouts = (settings.customLayouts || []).slice();
   const at = list.findIndex(l => l.id === clean.id);
@@ -939,7 +1015,8 @@ function edExportData(){
   const media = MEDIA[t.mediaID];
   const out = {format: 'mixel-photobooth-layout', version: 1,
     layout: {name: t.name, subtitle: t.subtitle, accent: t.accent, mediaID: t.mediaID,
-             background: t.background, mono: !!t.mono, length: t.length, elements: t.elements}};
+             background: t.background, mono: !!t.mono, length: t.length,
+             pack: t.pack > 1 ? t.pack : undefined, elements: t.elements}};
   if (media && media.custom) out.paper = media;
   return out;
 }
@@ -966,6 +1043,12 @@ function edImport(){
   }
   if (!MEDIA[mediaID]) { edSay('THE LAYOUT NEEDS A PAPER SIZE THIS BOOTH DOES NOT HAVE.'); return; }
   ED.tpl = Object.assign({}, data.layout, {mediaID});
+  // Clamped on the way in. A layout from another booth is data, and a pack
+  // of 400 would queue four hundred labels the first time a guest pressed
+  // start.
+  if (ED.tpl.pack > 1) ED.tpl.pack = Math.max(2, Math.min(8, ED.tpl.pack | 0));
+  else delete ED.tpl.pack;
+  registerCanvasLayout(ED.tpl);
   ED.editingId = null;
   ED.sel = -1;
   ED.dirty = true;
@@ -1072,6 +1155,10 @@ document.addEventListener('click', e => {
   else if (act === 'ed-add') edAdd(b.dataset.type);
   else if (act === 'ed-select') { ED.sel = +b.dataset.i; ED.tab = 'element'; edTabsState(); edPanel(); edDrawSelection(); }
   else if (act === 'ed-offer') edToggleOffer(b.dataset.id);
+  // Which sheet of a pack the stage is showing. Lives here rather than in
+  // ACTIONS because that dispatcher calls its handlers with no argument, and
+  // this one needs the button it was pressed on.
+  else if (act === 'ed-pack-preview') { ED.packPreview = +b.dataset.i || 1; edRender(); }
   else if (act === 'ed-paper-del') edDeletePaper(b.dataset.id);
   else if (act === 'ed-preset') {
     const p = PAPER_PRESETS[+b.dataset.i];
