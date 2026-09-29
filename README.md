@@ -392,6 +392,58 @@ stickers and SELPHY postcards means switching the default too — change PAPER i
 Admin and the printer with `-p` together, or a 100 x 150 sticker design will go
 to the postcard printer.
 
+## The sticker pack
+
+**`50 x 40 mm Label`** paper, and the **4 STICKERS** layout that goes with it:
+four shots, four separate labels, one photograph each.
+
+Not four photographs on one label. The generic grids scale to any sheet, but
+"scales" and "is worth printing" are different questions — measured, smallest
+photo side in mm:
+
+| | one-full | two-stack | four-grid | six-grid | strip-duo |
+|---|---|---|---|---|---|
+| 4x6 | 101.6 | 57.0 | 38.3 | 28.7 | 28.7 |
+| 100x150 | 100.0 | 56.1 | 37.7 | 28.2 | 28.3 |
+| SELPHY card 54x86 | 54.0 | 31.7 | 21.7 | 15.2 | 15.3 |
+| **50x40** | 29.0 | 13.3 | **9.0** | **9.1** | **6.8** |
+
+A face 7 mm across is not a photograph of anyone, and dithering to one bit
+takes what little is left. So `fitsPaper` now refuses a layout whose photos
+would fall under **12 mm** — under the tightest pairing the booth already
+ships (the 15.2 mm six-grid on a SELPHY card, which is fine), so nothing that
+worked before changes, and over the point where a small sticker starts
+offering layouts that waste the paper. On 50 x 40 that leaves the two single
+shots, the two-up, and the pack.
+
+### How a pack prints
+
+`pack: 4` on a layout makes it render once per photograph: the layout holds a
+single photo element reading src 0, and `renderPack` hands it a different
+picture each pass. `{i}` and `{of}` number each sticker — 1/4, 2/4 — because
+the set is the point.
+
+Every print route takes a list now, with a bare string still accepted so the
+editor's test print and the console's are untouched. Two copies of a
+four-pack is eight labels in **whole sets** — 1,2,3,4,1,2,3,4, not four of
+sticker one — so a guest gets complete packs to give away. The Bluetooth and
+USB routes send one label at a time and count them, because walking a guest to
+the thank-you screen after the first of four would leave three still coming
+out of the printer.
+
+The review and confirm screens show the whole pack laid out together, drawn at
+the sheets' own resolution with smoothing off. Approving one sticker of four
+tells a guest nothing about the other three.
+
+### Reaching booths already installed
+
+A layout added in a later build has to appear for people who already have the
+app, exactly once — offering it every launch would undo any decision to hide
+it. `layoutsSeen` records which built-ins these settings have met;
+`LAYOUTS_BEFORE_SEEN` seeds that record for a booth updating from a build that
+never kept one, so such a booth is offered only what is genuinely newer than
+it rather than having every hidden layout marched back in.
+
 ## The hologram
 
 A guest scans the QR on their print, lands on `ar/`, points the phone at the

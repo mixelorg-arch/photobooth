@@ -129,7 +129,13 @@ function edLoadBuiltIn(id){
   const tpl = LAYOUTS.find(l => l.id === id);
   if (!tpl) return;
   let media = currentMedia();
-  if (!fitsPaper(tpl, media)) media = tpl.receipt ? MEDIA['thermal-80'] : MEDIA['postcard-4x6'];
+  if (!fitsPaper(tpl, media)) {
+    // A canvas layout was drawn for one paper and means nothing on another,
+    // so it brings its own. Only the sheet and receipt templates, which are
+    // defined in fractions and scale to anything, get a generic fallback.
+    media = tpl.kind === 'canvas' && MEDIA[tpl.mediaID] ? MEDIA[tpl.mediaID]
+          : tpl.receipt ? MEDIA['thermal-80'] : MEDIA['postcard-4x6'];
+  }
   const brand = branding(tpl);
   // Every block must be present to be converted, so empty copy is stood in
   // for; the elements keep their tokens either way.

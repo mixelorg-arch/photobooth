@@ -241,6 +241,16 @@ const MEDIA = {
                    shortName:'100X150 LABEL', w:100/25.4, h:150/25.4, dpi:203, thermal:true},
   'label-a6':     {id:'label-a6',     name:'A6 Label 105 x 148 mm (sticker)',
                    shortName:'A6 LABEL',      w:105/25.4, h:148/25.4, dpi:203, thermal:true},
+  /* A small landscape sticker — the size barcode and price labels come on,
+   * and the cheapest roll a booth can run.
+   *
+   * 50 x 40 mm is 399 x 319 dots at 203 dpi, which is less than a fifth of
+   * the area of the waybill label and changes what can go on it. There is
+   * room for one photograph and a few lines of type; a four-shot grid on this
+   * paper prints four thumbnails nobody can make out. The template below is
+   * built for that constraint rather than scaled down from a bigger one. */
+  'label-50x40':  {id:'label-50x40',  name:'50 x 40 mm Label (small sticker)',
+                   shortName:'50X40 LABEL',   w:50/25.4,  h:40/25.4,  dpi:203, thermal:true},
 };
 const mediaPixels = m => ({w: Math.round(m.w * m.dpi), h: Math.round(m.h * m.dpi)});
 
@@ -358,6 +368,70 @@ const LAYOUTS = [
       {t:'text', text:'{caption}', x:.048, y:.976, size:.022, tracking:.2, case:'upper', colour:'dim'},
       {t:'text', text:'{date}', x:.952, y:.976, size:.022, tracking:.14, align:'right', colour:'dim'},
     ] },
+  /* SMALL STICKER — built for the 50 x 40 mm label and nothing else.
+   *
+   * Laid out against the dot grid rather than the page fraction, because at
+   * 399 x 319 dots the difference matters: a rule at 0.006 of the width is
+   * two dots, and a caption at 0.04 is sixteen. Everything here was chosen at
+   * that size and then written back as fractions.
+   *
+   * One photograph, portrait, taking the left half — a face is what a booth
+   * sticker is for, and a face wants height. The right column carries the
+   * type in a stack so the eye reads down it rather than hunting across a
+   * strip 21 mm wide.
+   *
+   * `kind: 'canvas'` so it is already in the editor's own format: opening it
+   * gives an editable starting point with no conversion, and its geometry is
+   * exactly what prints. */
+  /* STICKER PACK — four 50 x 40 mm labels, one photograph each.
+   *
+   * Not four photographs on one label. At this size a four-up grid gives 9 mm
+   * cells, which is nobody's face; measured against the other papers, 50 x 40
+   * is the one size where the grid layouts stop being worth printing. So the
+   * session still takes four shots and the printer feeds four separate
+   * stickers — a pack, which is also a better object than a strip: four
+   * things to give away rather than one to keep.
+   *
+   * `pack: 4` is what makes a layout print once per photograph. The layout
+   * itself holds a single photo element reading src 0, and the renderer hands
+   * it a different picture each time round.
+   *
+   * Every number is a whole dot on a 400 x 320 sheet, written back as a
+   * fraction. A rule at y = 0.840 lands on 268.8, straddles two rows, and the
+   * dither splits the ink — so it prints as a line of dots while the same
+   * rule at 269.0 prints solid. At this size the grid is coarse enough to
+   * see. */
+  { id:'sticker-pack', name:'4 STICKERS', subtitle:'PACK OF FOUR', accent:'#A9A2CE',
+    kind:'canvas', mediaID:'label-50x40', background:'#FFFFFF', mono:true,
+    pack:4,
+    elements:[
+      // Event name, and the rule it sits on.               y = 34, 44
+      {t:'text', text:'{event}', x:0.05, y:0.10625, size:0.0550, weight:800,
+       tracking:0.06, case:'upper'},
+      {t:'line', x:0.05, y:0.13750, w:0.90, weight:0.0075},
+
+      // The photograph: 170 x 200 dots, about 21 x 25 mm.
+      {t:'photo', src:0, x:0.05, y:0.17500, w:0.425, h:0.625, fit:'fill'},
+
+      // The right-hand stack, read downwards.        x = 205
+      {t:'text', text:'{word}', x:0.5125, y:0.33125, size:0.0875, weight:800,
+       tracking:-0.03},
+      {t:'text', text:'{caption}', x:0.5125, y:0.41875, size:0.0425, weight:400,
+       tracking:0.14, case:'upper', colour:'dim'},
+      {t:'line', x:0.5125, y:0.46875, w:0.4375, weight:0.0050, dash:0.0125},
+      {t:'text', text:'{date}', x:0.5125, y:0.55938, size:0.0450, weight:700,
+       tracking:0.06, case:'upper'},
+      // Which of the four this is. The pack is the point, so each sticker
+      // says where it sits in it.
+      {t:'text', text:'{i}/{of}', x:0.95, y:0.75625, size:0.1050, weight:800,
+       tracking:-0.03, align:'right'},
+
+      // Foot.                                        y = 269, 298
+      {t:'line', x:0.05, y:0.84063, w:0.90, weight:0.0075},
+      {t:'text', text:'{footer}', x:0.05, y:0.93125, size:0.0400, weight:400,
+       tracking:0.12, case:'upper', colour:'dim'},
+    ] },
+
 ];
 
 /* ------------------------------------------------------------------ *
@@ -436,9 +510,15 @@ LAYOUTS.push(
           ...RECEIPT_FOOT] },
 );
 
-// Distinct photographs a layout needs. Derived, never hand-written: a slot
-// list and a shot count that disagree is a bug waiting to happen.
+/* Distinct photographs a layout needs. Derived, never hand-written: a slot
+ * list and a shot count that disagree is a bug waiting to happen.
+ *
+ * A built-in written in the editor's own canvas format has elements rather
+ * than slots, so it goes through the same registration an editor-made layout
+ * does — which derives the slots, the shot count and the capture guide's
+ * aspect from the photo elements themselves. */
 LAYOUTS.forEach(l => {
+  if (l.kind === 'canvas') { registerCanvasLayout(l); return; }
   l.shots = new Set(l.slots.map(s => s.src)).size;
 });
 
@@ -629,6 +709,10 @@ function resolveToken(text, branding, tpl){
     // rather than the layout's own name on a guest's souvenir.
     .replace(/\{word\}/g,    ((branding.word || branding.event) || '').trim())
     .replace(/\{shots\}/g,   String(tpl.shots))
+    // Which sticker of the pack, and how many there are. 1 and 1 on
+    // anything that is not a pack, so the tokens are harmless elsewhere.
+    .replace(/\{i\}/g,       String(branding.index || 1))
+    .replace(/\{of\}/g,      String(branding.packSize || 1))
     .replace(/\{sub\}/g,     tpl.subtitle)
     // Receipt tokens. Harmless on a sheet, which simply never asks for them.
     .replace(/\{longdate\}/g, longDate())
@@ -1224,7 +1308,11 @@ function registerCanvasLayout(tpl){
   const photos = (tpl.elements || []).filter(e => e.t === 'photo');
   tpl.kind = 'canvas';
   tpl.slots = photos.map(e => ({x: e.x, y: e.y, w: e.w, h: e.h, src: e.src | 0}));
-  tpl.shots = new Set(tpl.slots.map(s => s.src)).size;
+  /* A pack holds one photo element and prints once per photograph, so its
+   * shot count comes from the pack size rather than from the distinct slots
+   * — otherwise a four-sticker pack would shoot once and print the same face
+   * four times. */
+  tpl.shots = tpl.pack > 1 ? tpl.pack : new Set(tpl.slots.map(s => s.src)).size;
   // The capture guide takes the first photograph's true shape, so people
   // frame themselves for the box they will actually print in.
   const media = MEDIA[tpl.mediaID];
@@ -1441,6 +1529,18 @@ const HOLD_CAMERA = IPADOS;
  * Saved values are merged over the defaults rather than replacing them,
  * so adding a field never wipes what the operator had set.
  * ==================================================================== */
+/* The built-in layouts that existed before `layoutsSeen` was recorded.
+ *
+ * A booth updated from an older build has no record of what it has been
+ * offered, and "add every built-in that is missing" would march back in and
+ * unhide each layout the operator had deliberately turned off. Seeding the
+ * record with this list instead means such a booth is offered only what is
+ * genuinely newer than it. Never add to this: it is a description of the
+ * past, not a list of what ships. */
+const LAYOUTS_BEFORE_SEEN = ['one-full', 'one-polaroid', 'two-stack',
+                             'four-grid', 'four-strip-duo', 'six-grid',
+                             'receipt-1', 'receipt-2', 'receipt-4'];
+
 const DEFAULTS = {
   /// 'auto' prefers a plugged-in USB camera and falls back to the built-in
   /// one; 'builtin' pins the tablet's own lens; anything else is a deviceId.
@@ -1471,7 +1571,13 @@ const DEFAULTS = {
   mediaID: 'postcard-4x6',
   guestLayoutIDs: ['one-full', 'one-polaroid', 'two-stack',
                    'four-grid', 'four-strip-duo', 'six-grid',
-                   'receipt-1', 'receipt-2', 'receipt-4'],
+                   'receipt-1', 'receipt-2', 'receipt-4',
+                   'sticker-pack'],
+  /// Built-in layouts these settings have already been offered. A layout
+  /// added in a later build is put in front of guests once, and a layout the
+  /// operator then hides stays hidden — which is why this is a record of what
+  /// has been seen rather than a straight comparison with the built-in list.
+  layoutsSeen: [],
   eventName: '',
   printCaption: '',
   printDate: true,
@@ -1561,9 +1667,9 @@ const STORE_KEY = 'photobooth.settings.v1';
 
 let settings = loadSettings();
 function loadSettings(){
-  let merged;
+  let merged, saved = {};
   try {
-    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
     merged = Object.assign({}, DEFAULTS, saved);
   } catch { merged = Object.assign({}, DEFAULTS); }
 
@@ -1579,6 +1685,18 @@ function loadSettings(){
   const known = new Set(LAYOUTS.map(l => l.id));
   const kept = (merged.guestLayoutIDs || []).filter(id => known.has(id));
   merged.guestLayoutIDs = kept.length ? kept : DEFAULTS.guestLayoutIDs.slice();
+
+  /* A layout that ships in a later build has to reach booths already
+   * installed, and exactly once — put it in front of guests the first time
+   * these settings meet it, and never again, so hiding it sticks. */
+  const seen = new Set(Array.isArray(saved.layoutsSeen) ? saved.layoutsSeen
+                                                        : LAYOUTS_BEFORE_SEEN);
+  LAYOUTS.filter(l => !l.custom).forEach(l => {
+    if (seen.has(l.id)) return;
+    seen.add(l.id);
+    if (!merged.guestLayoutIDs.includes(l.id)) merged.guestLayoutIDs.push(l.id);
+  });
+  merged.layoutsSeen = [...seen];
 
   return merged;
 }
@@ -1608,11 +1726,38 @@ const currentMedia = () => MEDIA[settings.mediaID] || MEDIA['postcard-4x6'];
  * a double strip on a till roll are both nonsense, so the paper chosen in
  * Admin decides which half of the list a guest ever sees — one switch turns
  * the whole booth into a receipt printer. */
-/* Whether a layout belongs on this paper. A built-in one knows only whether
- * it is a sheet or a receipt; a layout from the editor was designed against
- * one particular paper and is only offered on that one. */
-const fitsPaper = (tpl, media) =>
-  tpl.kind === 'canvas' ? tpl.mediaID === media.id : !!tpl.receipt === !!media.flow;
+/* Whether a layout belongs on this paper.
+ *
+ * A canvas layout was drawn for one paper and means nothing on another. A
+ * receipt flows and only suits a roll. Everything else is written in
+ * fractions and will scale to anything — which is the problem, because
+ * "scales" and "is worth printing" are different questions.
+ *
+ * Measured, smallest photo side in mm:
+ *
+ *              one-full  two-stack  four-grid  six-grid  strip-duo
+ *   4x6          101.6      57.0       38.3      28.7       28.7
+ *   100x150      100.0      56.1       37.7      28.2       28.3
+ *   card 54x86    54.0      31.7       21.7      15.2       15.3
+ *   50x40         29.0      13.3        9.0       9.1        6.8
+ *
+ * A face 7 mm across is not a photograph of anyone, and dithering to one bit
+ * takes what little is left. The floor is 12 mm: under the tightest pairing
+ * this booth already ships — the 15.2 mm six-grid on a SELPHY card, which is
+ * fine — so nothing that worked before changes, and over the point where a
+ * small sticker starts offering layouts that waste the paper. */
+const MIN_PHOTO_MM = 12;
+
+const fitsPaper = (tpl, media) => {
+  if (tpl.kind === 'canvas') return tpl.mediaID === media.id;
+  if (!!tpl.receipt !== !!media.flow) return false;
+  if (media.flow) return true;              // a roll is as long as it needs
+  const px = mediaPixels(media);
+  if (!px.w || !px.h) return true;
+  const mmx = (media.w * 25.4) / px.w, mmy = (media.h * 25.4) / px.h;
+  return slotRects(tpl, px.w, px.h).every(s =>
+    Math.min(s.r.w * mmx, s.r.h * mmy) >= MIN_PHOTO_MM);
+};
 
 const guestLayouts = () => {
   const media = currentMedia();
@@ -2225,6 +2370,13 @@ const session = {
      it has been taken. An array that grows as photos arrive cannot express
      "frame 3 is being redone", which is the whole point of per-frame retake. */
   photos: [],
+  /* When the layout is a pack, every sheet in it; null otherwise. The
+     printer takes these one at a time, which is what a label printer does
+     anyway — it feeds to the gap and stops. */
+  pack: null,
+  /* What the guest is shown. The same canvas as `sheet` for an ordinary
+     layout, and the whole pack laid out together for a pack. */
+  proof: null,
   /* When each frame was taken, parallel to `photos`. The receipt's shot
      order is timed from these, so they are session data, not decoration. */
   times: [],
@@ -2841,6 +2993,22 @@ function thermalize(canvas, media, opts){
   return canvas;
 }
 
+/* Render a pack: one sheet per photograph, rather than one sheet holding
+ * them all.
+ *
+ * The layout carries a single photo element reading src 0, and each pass
+ * hands it a different picture — so the same design prints four times with
+ * four faces. `index` and `packSize` reach the sheet through the branding,
+ * which is how {i} and {of} end up saying "2/4" on the second sticker.
+ */
+function renderPack(photos, tpl, media, brand, scale, opts){
+  const n = Math.max(1, tpl.pack | 0);
+  return Array.from({length: n}, (_, i) =>
+    renderSheet([photos[i]], tpl, media,
+                Object.assign({}, brand, {index: i + 1, packSize: n}),
+                scale, opts));
+}
+
 function compose(){
   const media = currentMedia();
   // A thermal head has one ink and two states. COLOUR on thermal paper would
@@ -2848,11 +3016,54 @@ function compose(){
   // Dithered here rather than at print time, so the sheet the guest approves
   // on the review and confirm screens is the exact one that burns — down to
   // the dot. A preview that flatters the print is worse than no preview.
+  const tpl = session.layout;
+  const opts = {mono: media.thermal || settings.photoTone !== 'colour'};
+  const brand = branding(tpl);
+
+  if (tpl.pack > 1) {
+    session.pack = renderPack(session.photos, tpl, media, brand, 1, opts)
+                     .map(c => thermalize(c, media));
+    // The first sticker stands for the pack wherever one sheet is expected;
+    // `contactSheet` is what a guest is actually shown, because approving one
+    // sticker out of four tells them nothing about the other three.
+    session.sheet = session.pack[0];
+    session.proof = contactSheet(session.pack, media);
+    return;
+  }
+
+  session.pack = null;
   session.sheet = thermalize(
-    renderSheet(session.photos, session.layout, media,
-                branding(session.layout), 1,
-                {mono: media.thermal || settings.photoTone !== 'colour'}),
-    media);
+    renderSheet(session.photos, tpl, media, brand, 1, opts), media);
+  session.proof = session.sheet;
+}
+
+/* The pack, laid out as one picture for the review and confirm screens.
+ *
+ * Only ever shown, never printed: the printer takes the stickers one at a
+ * time. Drawn at the sheets' own resolution with a hairline between them, so
+ * what a guest approves is the actual dithered output rather than a smooth
+ * re-render of it. */
+function contactSheet(sheets, media){
+  if (!sheets || !sheets.length) return null;
+  const cols = sheets.length <= 2 ? 1 : 2;
+  const rows = Math.ceil(sheets.length / cols);
+  const w = sheets[0].width, h = sheets[0].height;
+  const gap = Math.max(2, Math.round(w * 0.02));
+  const c = document.createElement('canvas');
+  c.width = cols * w + (cols + 1) * gap;
+  c.height = rows * h + (rows + 1) * gap;
+  const g = c.getContext('2d');
+  g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, c.width, c.height);
+  g.imageSmoothingEnabled = false;          // never resample a dither
+  sheets.forEach((sheet, i) => {
+    const x = gap + (i % cols) * (w + gap);
+    const y = gap + Math.floor(i / cols) * (h + gap);
+    g.drawImage(sheet, x, y);
+    g.strokeStyle = 'rgba(17,17,17,0.35)';
+    g.lineWidth = 1;
+    g.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+  });
+  return c;
 }
 
 /* ==================================================================== *
@@ -2903,7 +3114,7 @@ function buildLayoutTiles(){
 function showReview(){
   const host = el('#review-sheet');
   host.innerHTML = '';
-  host.appendChild(session.sheet);
+  host.appendChild(session.proof || session.sheet);
 
   setPixel(el('#review-caption'),
            session.layout.shots === 1 ? '1 SHOT' : session.layout.shots + ' SHOTS', 3);
@@ -2981,7 +3192,7 @@ function showConfirm(){
   compose();
   const host = el('#confirm-sheet');
   host.innerHTML = '';
-  host.appendChild(session.sheet);
+  host.appendChild(session.proof || session.sheet);
 
   const media = currentMedia();
   const px = sheetPixels(session.layout, media);
@@ -3071,9 +3282,15 @@ function submitPrint(){
   setBars('#print-bars', 0.15);
 
   const media = currentMedia();
-  // A thermal sheet is line art, a QR code and a dither: every one of those
-  // is ruined by JPEG ringing. Photographs on a colour printer keep the JPEG.
-  const dataURL = sheetDataURL(session.sheet, media);
+  /* A thermal sheet is line art, a QR code and a dither: every one of those
+   * is ruined by JPEG ringing. Photographs on a colour printer keep the JPEG.
+   *
+   * A pack is several sheets, so what goes to the printer is a list. One
+   * ordinary sheet is a list of one, which keeps every route below on the
+   * same path instead of growing a special case. */
+  const sheets = session.pack && session.pack.length ? session.pack : [session.sheet];
+  const dataURLs = sheets.map(sheet => sheetDataURL(sheet, media));
+  const dataURL = dataURLs[0];
 
   setTimeout(() => {
     el('#print-status').textContent = silentPrintingLikely()
@@ -3081,8 +3298,8 @@ function submitPrint(){
       : 'Opening the print dialog…';
     setBars('#print-bars', 0.6);
     try {
-      if (NATIVE) { nativePrint(dataURL, media); return; }
-      openPrintDialog(dataURL, media, session.copies, () => {
+      if (NATIVE) { nativePrint(dataURLs, media); return; }
+      openPrintDialog(dataURLs, media, session.copies, () => {
         setBars('#print-bars', 1);
         finishPrinting();
       });
@@ -3116,11 +3333,18 @@ function printPaperMils(media, sheet){
   return {w: Math.round(media.w * 1000), h: Math.round(media.h * 1000)};
 }
 
-function nativePrint(dataURL, media){
+function nativePrint(dataURLs, media){
+  const list = Array.isArray(dataURLs) ? dataURLs : [dataURLs];
   const px = session.sheet;
   if (settings.printMode === 'thermal') {
-    NATIVE.thermalPrint(dataURL, session.copies,
-                        Math.max(64, settings.thermalWidthDots | 0));
+    // One image at a time down the wire. A pack is sent sheet by sheet; the
+    // shell answers for each, and nativePrintResult only walks the guest on
+    // when the last one lands. See packPending.
+    packPending = list.length * Math.max(1, session.copies) - 1;
+    for (let c = 0; c < Math.max(1, session.copies); c++) {
+      list.forEach(u => NATIVE.thermalPrint(u, 1,
+                          Math.max(64, settings.thermalWidthDots | 0)));
+    }
     return;                                  // finishes in nativePrintResult
   }
   if (settings.printMode === 'usb') {
@@ -3133,26 +3357,37 @@ function nativePrint(dataURL, media){
     const heightMM = media.flow
       ? (px && px.height ? px.height / media.dpi * 25.4 : 150)
       : media.h * 25.4;
-    NATIVE.usbPrint(dataURL, session.copies, dots,
-                    +widthMM.toFixed(1), +heightMM.toFixed(1),
-                    +(settings.labelGapMM || 0));
+    packPending = list.length * Math.max(1, session.copies) - 1;
+    for (let c = 0; c < Math.max(1, session.copies); c++) {
+      list.forEach(u => NATIVE.usbPrint(u, 1, dots,
+                          +widthMM.toFixed(1), +heightMM.toFixed(1),
+                          +(settings.labelGapMM || 0)));
+    }
     return;                                  // finishes in nativePrintResult
   }
   // Media sizes are in mils — thousandths of an inch. A roll has no page
   // height, so its length is whatever the receipt came out.
   const page = printPaperMils(media, px);
-  NATIVE.printSheet(dataURL, session.copies, page.w, page.h,
-                    'SnapBox ' + media.shortName);
+  list.forEach(u => NATIVE.printSheet(u, session.copies, page.w, page.h,
+                                      'SnapBox ' + media.shortName));
   setBars('#print-bars', 1);
   finishPrinting();
 }
+
+/* Sheets still in flight on the one-at-a-time routes. The shell answers per
+ * sheet, and walking a guest to the thank-you screen after the first of four
+ * would leave three stickers still coming out. */
+let packPending = 0;
 
 /// Called by the Android shell when a Bluetooth job has finished or failed.
 function nativePrintResult(ok, message){
   // A test print from the layout editor is not a guest's print: it must not
   // advance the sheet counter or walk anyone to the thank-you screen.
   if (typeof editorPrintResult === 'function' && editorPrintResult(ok, message)) return;
-  if (!ok) { fail(message || 'The printer did not answer.'); return; }
+  // One failure fails the whole pack: half a set of stickers is worse than a
+  // clear error, and the rest are already queued behind it.
+  if (!ok) { packPending = 0; fail(message || 'The printer did not answer.'); return; }
+  if (packPending > 0) { packPending--; return; }
   setBars('#print-bars', 1);
   finishPrinting();
 }
@@ -3175,10 +3410,11 @@ function printPageCSS(media){
 }
 
 let printFrame = null;
-function openPrintDialog(dataURL, media, copies, done){
+function openPrintDialog(dataURLs, media, copies, done){
+  const list = Array.isArray(dataURLs) ? dataURLs : [dataURLs];
   // iOS and iPadOS ignore `print()` called on an iframe, so the sheet has to
   // be printed from the page itself there. See printFromDocument.
-  if (IPADOS) { printFromDocument(dataURL, media, copies, done); return; }
+  if (IPADOS) { printFromDocument(list, media, copies, done); return; }
   // A hidden iframe rather than window.open: no popup blocker, and the job
   // cannot be orphaned in a background tab.
   if (printFrame) printFrame.remove();
@@ -3188,7 +3424,7 @@ function openPrintDialog(dataURL, media, copies, done){
   document.body.appendChild(printFrame);
 
   const pages = Array.from({length: Math.max(1, copies)},
-                           () => '<img src="' + dataURL + '">').join('');
+    () => list.map(u => '<img src="' + u + '">').join('')).join('');
   const doc = printFrame.contentDocument;
   doc.open();
   const page = printPageCSS(media);
@@ -3228,7 +3464,8 @@ function openPrintDialog(dataURL, media, copies, done){
  * the next print replaces them instead. Hidden and inert, they cost nothing.
  */
 let printout = null;
-function printFromDocument(dataURL, media, copies, done){
+function printFromDocument(dataURLs, media, copies, done){
+  const list = Array.isArray(dataURLs) ? dataURLs : [dataURLs];
   if (!printout) {
     printout = document.createElement('div');
     printout.id = 'printout';
@@ -3254,8 +3491,11 @@ function printFromDocument(dataURL, media, copies, done){
       '#printout img:last-child{page-break-after:auto;break-after:auto}' +
     '}';
 
+  /* Every sheet, every copy. A pack of four printed twice is eight labels,
+   * and the order is pack-major so a guest gets whole sets rather than four
+   * of sticker one followed by four of sticker two. */
   printout.innerHTML = Array.from({length: Math.max(1, copies)},
-                                  () => '<img src="' + dataURL + '">').join('');
+    () => list.map(u => '<img src="' + u + '">').join('')).join('');
 
   // Every page has to be decoded before print() or the preview shows blanks.
   const imgs = [...printout.querySelectorAll('img')];
@@ -4476,7 +4716,9 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 feedDescription, cameraHeld, cameraHoldState, permissionNote,
                 recoverCameraIfDropped,
                 printPageCSS, printFromDocument, rescanCameras,
-                thermalize, sheetDataURL, liftShadows, localMean, smoothing,
+                thermalize, sheetDataURL, renderPack, contactSheet,
+                liftShadows, localMean, smoothing,
+                slotRects,
                 raiseFlash, dropFlash, normaliseExposure, testPrint,
                 tickViewfinder, setViewfinderRecording,
                 syncNow, syncPayload, syncAbsorb, newSyncCode,
