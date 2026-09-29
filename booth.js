@@ -1887,7 +1887,19 @@ function attachPreviews(){
     if (stream) { try { attractVideo.play(); } catch {} }
   }
   if (attractFallback) attractFallback.hidden = live || uvc.running;
+  const note = el('#attract-camnote');
+  // A booth that says STARTING THE CAMERA for ten minutes is lying. Once
+  // there is a stream the panel is hidden anyway; this line is only ever
+  // read while something is wrong.
+  if (note) setPixel(note, live || uvc.running ? 'CAMERA READY'
+                   : cameraRefused ? 'ALLOW THE CAMERA TO USE THE BOOTH'
+                   : 'STARTING THE CAMERA', 2);
 }
+
+/* Whether the last attempt to open the camera was refused rather than simply
+ * not finished. It changes what the stand-in panel should say, and only the
+ * error path knows it. */
+let cameraRefused = false;
 const camMsg = document.getElementById('cam-msg');
 let stream = null;
 
@@ -2149,6 +2161,7 @@ async function startCamera(){
 
 function cameraMessage(err){
   const name = err && err.name;
+  cameraRefused = name === 'NotAllowedError';
   if (name === 'NotAllowedError')
     return 'Camera access was refused.\n\nAllow it for this site in Safari ›\n' +
            'Settings for This Website, or in Chrome\'s address-bar camera icon,\nthen press START again.';
