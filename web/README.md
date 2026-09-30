@@ -566,6 +566,121 @@ leaves the layouts untouched.
 Run `supabase/schema.sql` once in the SQL editor of the `ledger` project. It
 is idempotent.
 
+## The digital copy
+
+Every session that prints also goes up to Cloudinary, and the DONE screen
+shows a QR that opens it. **Admin → DIGITAL COPY.**
+
+The guest scans the code, gets a page with their print and every individual
+shot, and can save any of them to their phone. The page is `web/s/` — plain
+static HTML deployed next to the booth, no account, no app, nothing to
+install. What it needs is entirely in the fragment after the `#`, which a
+browser never sends to the web server:
+
+```
+https://mixelorg-arch.github.io/photobooth/s/#K7M2Q9.4
+                                              code   photos
+```
+
+### The order everything happens in
+
+This is the part worth understanding, because it is the opposite of the
+obvious one.
+
+**The code is minted when the session starts. The upload happens when PRINT
+is pressed. The QR is drawn in between, before a single byte has gone
+anywhere.** That is possible because an unsigned Cloudinary upload may name
+its own `public_id`, and delivery URLs work without the version component —
+both measured against this account on 2026-09-30. So the URL of a photograph
+is known before the photograph is taken.
+
+The alternative — upload, wait, then print what comes back — puts a venue's
+wifi in the middle of the print queue. Wifi is allowed to make the *code*
+fail. It is not allowed to make the *paper* late.
+
+### Why the upload waits for PRINT
+
+Uploading each shot as it lands would be faster and is wrong. A retake
+replaces a photograph in a slot that has already been shot, and **an unsigned
+upload cannot overwrite a name it has already used** — measured: posting a
+different image to an existing `public_id` returns `200 OK` with
+`"existing": true` and leaves the original bytes in place. Uploading during
+capture would therefore publish the take the guest rejected, and report
+success. Waiting until PRINT is what makes the names final.
+
+Nothing is uploaded for a session that is abandoned before printing.
+
+### A code that leads nowhere
+
+A screen can say "this did not upload". A sticker cannot — it leaves in
+somebody's pocket carrying a dead code, and they find out at home. So:
+
+* one 8-pixel upload at the start of each session gives `Cloud.live()` real
+  evidence instead of a guess;
+* if that evidence says the network is bad, the link is left off the paper;
+* at PRINT, if the network has failed since the sheet was drawn, **the sheet
+  is composed again without it**;
+* the screen still shows the code, and says plainly that nothing uploaded.
+
+Failed jobs retry four times over about nine seconds. Anything still queued
+survives into the next session, because those guests have already walked off
+with a printed code and a late upload is what makes it work.
+
+### What gets uploaded
+
+`n` photographs plus one print, under `snapbox/<CODE>/1…n` and
+`snapbox/<CODE>/print`, tagged `snapbox` and `snapbox-<CODE>`.
+
+The print is **not** the sheet that was printed. That one is a one-bit
+dither, which is what makes a thermal print readable on paper and unreadable
+on a phone; the digital copy is the same layout rendered again, in colour,
+several times larger. A layout that is monochrome by design stays that way —
+that is design, not the printer's one ink.
+
+### Where the QR appears
+
+On the DONE screen, always, at 196px with a paper-white quiet zone and no
+resampling.
+
+On paper, only where a layout has a QR element — which today means the
+receipt layouts. The 50×40mm sticker has none, and the geometry says it
+should not: the link is 54 characters, which is a version 4 code, 33 modules
+plus 8 of quiet zone. At 203dpi that needs 15mm square to stay above the
+0.4mm module a phone can read across a table. There is no 15mm square free on
+a 50×40 sticker that also carries a photograph. You can add one in the editor
+on bigger paper; a QR element left at its default `{link}` now resolves to the
+session's own code rather than the fixed one in Admin → RECEIPT.
+
+### Privacy, plainly
+
+This is the one place the booth sends a photograph anywhere, and **OFF is
+absolute** — with DIGITAL COPY off, nothing leaves the device, which is the
+state the booth shipped in.
+
+A code is six characters from a 30-letter alphabet, 729 million of them, so
+they are not guessable in practice. They are not private either: anyone
+holding one can see that session. Treat a code like the photographs.
+
+The account has an unsigned preset and no key or secret anywhere. Unsigned is
+the whole security model: a booth can add files and do nothing else — it
+cannot list, read or delete what is on the account. The flip side is that
+nothing in the booth can delete an upload either. That is a job for the
+Cloudinary console, where the tag finds a session.
+
+### Verified
+
+* A 576-dot dithered thermal receipt, composed by the booth, decoded by
+  `BarcodeDetector` back to the exact session link — not "a QR was drawn",
+  the actual round trip.
+* The same for the code on the DONE screen.
+* A real five-asset session (four photographs and the print) uploaded in
+  2.4 seconds.
+* `fl_attachment` comes back `content-disposition: attachment`, which is what
+  makes SAVE hand a file to mobile Safari rather than opening it.
+
+**Not verified:** nothing here has been scanned by an actual phone camera off
+an actual tablet screen, and no upload has been made over a cafe's wifi.
+
 ## The tape overlay
 
 Both camera wells are dressed as a camcorder's on-screen display, from the
