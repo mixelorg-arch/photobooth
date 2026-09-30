@@ -12,6 +12,19 @@
  */
 'use strict';
 
+/* The digital copy of the session being shot.
+ *
+ * Top of the file, and not on `session`, because `branding()` reads it and
+ * runs from places that execute while the file is still being evaluated.
+ *
+ * `code` is minted when a session starts rather than when it uploads: the
+ * QR has to be printed minutes before the pictures it points at finish
+ * going up. `sent` exists because Cloudinary's unsigned upload silently
+ * refuses to overwrite an existing public_id — uploading a second time
+ * would keep the take the guest rejected, and report success.
+ */
+const share = {code: null, count: 0, sent: false, baked: false};
+
 /* ==================================================================== *
  * Pixel icons — the grids are copied verbatim from PixelIcons.swift so
  * the two builds cannot drift apart.
@@ -1666,6 +1679,26 @@ const DEFAULTS = {
   idleReturnSeconds: 90,
   thankYouSeconds: 6,
   adminPasscode: '1234',
+  /* --- the digital copy --- */
+  /// Upload each printed session and show the guest a QR that leads to it.
+  /// OFF is absolute: with this clear, no photograph ever leaves the device,
+  /// which is the state the booth shipped in and the one to go back to if a
+  /// venue asks.
+  shareOn: true,
+  /// Cloudinary cloud name, and an *unsigned* upload preset on it. Unsigned
+  /// is the whole security model: it can upload and nothing else — it cannot
+  /// list, read or delete what is already there.
+  shareCloud: 'wdhofaeh',
+  sharePreset: 'photobooth',
+  /// The page a scanned code opens. Deployed alongside the booth itself.
+  shareBase: 'https://mixelorg-arch.github.io/photobooth/s/',
+  /// How long DONE holds when there is a code on it. Six seconds is enough
+  /// to read "PRINT COMPLETE" and nowhere near enough to get a phone out.
+  shareHoldSeconds: 25,
+  /// Set by TEST UPLOAD, so an operator can see at a glance whether this
+  /// booth has ever managed to reach the account.
+  shareTestedAt: 0,
+  shareLastNote: '',
 };
 const STORE_KEY = 'photobooth.settings.v1';
 
@@ -1801,6 +1834,90 @@ function sessionTotal(){
   return mmss((Math.max(...taken) - Math.min(...taken)) / 1000);
 }
 
+
+/* ==================================================================== *
+ * The digital copy
+ *
+ * A printed sticker is the souvenir and a QR is how it survives being
+ * lost. The booth mints a code when a session starts, prints it, and
+ * uploads afterwards — see cloud.js for why that order is the safe one.
+ *
+ * Nothing here ever blocks the print queue. A venue's wifi is allowed to
+ * make the *code* fail; it is not allowed to make the *paper* late.
+ * ==================================================================== */
+
+/* Null whenever the digital copy is off, unconfigured, or there is no
+ * session to upload — which is the single thing every caller tests. */
+function shareConfig(){
+  if (!settings.shareOn || !window.Cloud) return null;
+  if (!settings.shareCloud || !settings.sharePreset) return null;
+  if (!share.code) return null;
+  return {cloud: settings.shareCloud, preset: settings.sharePreset, code: share.code};
+}
+
+/* What the guest scans. */
+function shareLink(){
+  const cfg = shareConfig();
+  return cfg ? Cloud.linkFor(settings.shareBase, cfg.code, share.count) : '';
+}
+
+/* The same link, but only when it is fit to commit to paper.
+ *
+ * A screen can say "this did not upload". A sticker cannot: it leaves with
+ * the guest carrying a code that leads nowhere, and they find out at home.
+ * So the printed one is dropped the moment the network is known bad. */
+function sharePrintLink(){
+  return (shareConfig() && Cloud.live()) ? shareLink() : '';
+}
+
+/* One small upload at the start of a session, so `Cloud.live()` has real
+ * evidence by the time a QR is committed to paper rather than a guess.
+ * Quiet: the guest is choosing a layout and there is nothing to tell them. */
+function shareProbe(){
+  const cfg = shareConfig();
+  if (!cfg) return;
+  Cloud.probe(cfg).catch(err => console.warn('share probe failed:', err.message));
+}
+
+/* The print, re-rendered for a phone.
+ *
+ * Not the sheet that was printed: that one is a one-bit dither, which is
+ * what makes a thermal print readable on paper and unreadable on a screen.
+ * The layout's own monochrome is kept — that is design, not a limitation of
+ * the head. */
+function sharePrintCanvas(){
+  const media = currentMedia(), tpl = session.layout;
+  const opts = {mono: settings.photoTone !== 'colour' ? true : undefined};
+  const brand = branding(tpl);
+  const wide = (session.sheet && session.sheet.width) || 600;
+  // A 50x40mm label is 400 dots across. Printed that is 203dpi; on a phone
+  // it is a thumbnail, so it is rendered again several times larger.
+  const scale = Math.max(1, Math.min(4, Math.round(1400 / wide)));
+  try {
+    return tpl.pack > 1
+      ? contactSheet(renderPack(session.photos, tpl, media, brand, scale, opts), media)
+      : renderSheet(session.photos, tpl, media, brand, scale, opts);
+  } catch (err) {
+    console.warn('no digital print:', err.message);
+    return null;
+  }
+}
+
+/* Queue the whole session. Called once, at print time — not at capture.
+ *
+ * A retake replaces a photograph in a slot that has already been shot, and
+ * an unsigned upload cannot overwrite what it has already put at that name.
+ * Uploading as the shots land would therefore publish the rejected take and
+ * report success. Waiting until PRINT is what makes the names final. */
+function shareUpload(){
+  const cfg = shareConfig();
+  if (!cfg || share.sent) return;
+  share.sent = true;
+  session.photos.forEach((photo, i) => { if (photo) Cloud.push(cfg, String(i + 1), photo); });
+  const print = sharePrintCanvas();
+  if (print) Cloud.push(cfg, 'print', print);
+}
+
 const branding = (tpl) => ({
   event: settings.eventName,
   caption: settings.printCaption,
@@ -1813,7 +1930,9 @@ const branding = (tpl) => ({
   // the number of frames it takes.
   para: settings.printPara,
   footer: settings.printFooter,
-  link: settings.printLink,
+  // This session's own code wins over the fixed link: a guest scanning a
+  // souvenir wants their photographs, not the booth's website.
+  link: sharePrintLink() || settings.printLink,
   tracks: tpl ? receiptTracks(tpl) : [],
   total: sessionTotal(),
 });
@@ -2469,6 +2588,13 @@ function restartIdle(){
 function begin(){
   keepAwake();
   vfStarted = Date.now();
+  // A fresh code per session. Minted here, printed at compose, uploaded at
+  // print — the order that keeps the network out of the print queue.
+  share.code = window.Cloud ? Cloud.newCode() : null;
+  share.count = 0;
+  share.sent = false;
+  share.baked = false;
+  if (window.Cloud) { Cloud.begin(); shareProbe(); }
   session.photos = [];
   session.times = [];
   session.marks.clear();
@@ -2483,6 +2609,7 @@ function begin(){
 
 function chooseLayout(tpl){
   session.layout = tpl;
+  share.count = tpl.shots;
   session.photos = new Array(tpl.shots).fill(null);
   session.times = new Array(tpl.shots).fill(null);
   session.marks.clear();
@@ -3036,6 +3163,9 @@ function compose(){
   const tpl = session.layout;
   const opts = {mono: media.thermal || settings.photoTone !== 'colour'};
   const brand = branding(tpl);
+  // Whether this sheet carries a code, so print time can tell if the
+  // network died between drawing it and burning it.
+  share.baked = !!sharePrintLink();
 
   if (tpl.pack > 1) {
     session.pack = renderPack(session.photos, tpl, media, brand, 1, opts)
@@ -3292,6 +3422,13 @@ function silentPrintingLikely(){
 }
 function submitPrint(){
   if (!session.sheet) { fail('Nothing to print — the layout came back empty.'); return; }
+  // The sheet was drawn on the assumption the network was there. If that has
+  // since turned out to be false, draw it again without the code: a sticker
+  // carrying a QR that leads nowhere is worse than a sticker with none.
+  if (share.baked && !sharePrintLink()) compose();
+  // Everything goes up now rather than as the shots landed, because a retake
+  // has to be able to replace a photograph before its name is taken.
+  shareUpload();
   go('printing');
   setPixel(el('#print-title'),
            session.copies === 1 ? 'PRINTING YOUR PHOTO' : 'PRINTING ' + session.copies + ' COPIES', 5);
@@ -3529,6 +3666,55 @@ function printFromDocument(dataURLs, media, copies, done){
   });
 }
 
+/* Draw the session's code onto the DONE screen. Returns whether there is
+ * anything there to scan, because that decides how long the screen holds. */
+function showShareCode(){
+  const mod = el('#ty-share');
+  if (!mod) return false;
+  const cfg = shareConfig();
+  const link = cfg ? shareLink() : '';
+  mod.hidden = true;
+  if (!link) return false;
+
+  const c = el('#ty-qr');
+  const box = c.width;                      // square, set in the markup
+  const g = c.getContext('2d');
+  g.fillStyle = '#FFFFFF';
+  g.fillRect(0, 0, box, box);
+  try {
+    QR.draw(g, link, {x: 0, y: 0, size: box}, INK);
+  } catch (err) {
+    // A code that cannot be encoded must not be shown as a pattern.
+    console.warn('screen QR skipped:', err.message);
+    return false;
+  }
+  setPixel(el('#ty-code'), cfg.code, 5);
+  paintShareNote(Cloud.status());
+  mod.hidden = false;
+  return true;
+}
+
+/* What the DONE screen says under the code. The upload is usually still
+ * running while the guest is reading it, so this is live rather than a
+ * single verdict printed once. */
+function paintShareNote(st){
+  const node = el('#ty-share-note');
+  if (!node || !share.sent) return;
+  const total = st.done + st.failed + st.pending;
+  if (st.failed && !st.pending) {
+    node.textContent = st.done
+      ? 'Some of these did not upload — the code will show what did.'
+      // Usually the venue's wifi, but it could as easily be a wrong preset,
+      // so it says what happened rather than guessing why.
+      : 'These did not upload, so this code will not work.';
+  } else if (st.pending) {
+    node.textContent = 'Uploading ' + Math.min(total, st.done + 1) + ' of ' + total +
+                       '… the code works as soon as it finishes.';
+  } else if (st.done) {
+    node.textContent = 'Ready. Point your phone camera at the code.';
+  }
+}
+
 function finishPrinting(){
   // The sheet number advances only when a job has actually been sent, so a
   // guest who backs out does not burn a number.
@@ -3537,11 +3723,18 @@ function finishPrinting(){
 
   setPixel(el('#ty-message'),
            session.copies === 1 ? 'PRINT COMPLETE' : session.copies + ' PRINTS ON THE WAY', 5);
+  const scannable = showShareCode();
   go('thankyou');
   clearTimeout(session.thankYouTimer);
+  // Six seconds is enough to read a line of type. Getting a phone out,
+  // waking it and framing a code is not a six second job, so a screen with
+  // something to scan on it holds for as long as that takes.
+  const hold = scannable
+    ? Math.max(settings.thankYouSeconds, settings.shareHoldSeconds || 0)
+    : settings.thankYouSeconds;
   session.thankYouTimer = setTimeout(() => {
     if (session.step === 'thankyou') abandon();
-  }, settings.thankYouSeconds * 1000);
+  }, hold * 1000);
 }
 
 function fail(message){
@@ -3732,6 +3925,7 @@ async function renderAdmin(){
   if (!NATIVE) parts.push(printerSection());
 
   parts.push(syncSection());
+  parts.push(shareSection());
 
   parts.push(section('LAYOUT EDITOR', 'star', [
     row('YOUR LAYOUTS', '<div class="seg"><button class="on">' +
@@ -3794,7 +3988,9 @@ async function renderAdmin(){
     row('IDLE RESET', num('idleReturnSeconds', 15, 600, 15, 's')),
     row('THANK YOU HOLD', num('thankYouSeconds', 2, 30, 1, 's')),
     row('PASSCODE', field('adminPasscode', '1234')),
-    note('warn', 'Photos live in this tab only and are dropped when the session ends. Nothing is uploaded and nothing is written to disk.'),
+    note('warn', settings.shareOn
+      ? 'Photos live in this tab only and are dropped when the session ends — nothing is written to disk. They are uploaded, because DIGITAL COPY is on; turn it off there and nothing leaves the device at all.'
+      : 'Photos live in this tab only and are dropped when the session ends. Nothing is uploaded and nothing is written to disk.'),
   ]));
 
   parts.push('<div class="row gap14"><span class="grow"></span>' +
@@ -3974,6 +4170,57 @@ function newSyncCodeFromAdmin(){
   renderAdmin();
 }
 
+
+/* The digital copy, in the operator console.
+ *
+ * Like the printer section, this tests rather than detects. There is no way
+ * to ask Cloudinary "will my uploads work" other than uploading something,
+ * so that is what TEST UPLOAD does — one eight-pixel square, under a fixed
+ * name so repeating the test stores nothing new. It is the only honest
+ * answer to "is this configured", and it is worth running before an event
+ * rather than discovering it with a queue waiting.
+ */
+async function testShare(){
+  if (!settings.shareOn) { settings.shareLastNote = 'TURNED OFF'; renderAdmin(); return; }
+  settings.shareLastNote = 'TESTING…';
+  renderAdmin();
+  try {
+    const out = await Cloud.probe({cloud: settings.shareCloud, preset: settings.sharePreset});
+    settings.shareTestedAt = Date.now();
+    settings.shareLastNote = 'UPLOAD OK IN ' + out.ms + ' MS';
+  } catch (err) {
+    settings.shareLastNote = 'FAILED — ' + String(err.message).slice(0, 90);
+  }
+  saveSettings();
+  renderAdmin();
+}
+
+function shareSection(){
+  const on = !!settings.shareOn;
+  const when = settings.shareTestedAt
+    ? new Date(settings.shareTestedAt).toLocaleString() : 'NEVER';
+  const rows = [
+    row('DIGITAL COPY', seg('shareOn', [[true, 'ON'], [false, 'OFF']], on)),
+    row('CLOUD NAME', field('shareCloud', 'your Cloudinary cloud name')),
+    row('UPLOAD PRESET', field('sharePreset', 'an UNSIGNED preset on that account')),
+    row('LINK PAGE', field('shareBase', 'https://…/s/ — where a scanned code opens')),
+    row('CODE ON SCREEN', num('shareHoldSeconds', 5, 90, 5, 's')),
+    row('LAST TEST', '<div class="seg"><button class="on">' +
+      escapeHTML(when + (settings.shareLastNote ? '  ·  ' + settings.shareLastNote : '')) +
+      '</button></div>'),
+    row('', '<button class="btn solid" data-act="share-test" style="min-width:250px">' +
+      '<span class="px" data-cell="4">TEST UPLOAD</span></button>'),
+  ];
+  rows.push(note(on ? 'warn' : 'info', on
+    ? 'ON means every printed session is uploaded: each photograph, and the print as a colour picture. Guests scan the code on the DONE screen and can save them. This is the one place the booth sends a photograph anywhere — if a venue or a guest asks for it not to, this is the switch.'
+    : 'OFF means no photograph leaves the device, ever. Guests get paper and nothing else, and the DONE screen shows no code.'));
+  rows.push(note('info', 'The code is minted when a session starts, so it can be printed on the sheet straight away; the pictures go up when PRINT is pressed and usually land before the guest has their phone out. A code whose upload has not finished shows STILL UPLOADING on the page rather than an error.'));
+  rows.push(note('info', 'The preset must be an UNSIGNED one. Unsigned is the whole security model here: a booth can add files and do nothing else — it cannot list, read or delete what is on the account. The flip side is that nothing in the booth can delete an upload either; that is a job for the Cloudinary console, where the tag "snapbox-" plus the code finds a session.'));
+  rows.push(note('warn', 'Anyone holding a code can see that session. The codes are six characters from a 30 letter alphabet — 729 million of them — so they are not guessable in practice, but they are not private either. Treat a code like the photographs themselves.'));
+  rows.push(note('info', 'If the network is down when PRINT is pressed, the booth leaves the code off the paper rather than printing one that leads nowhere — the sheet is composed again without it. The screen still shows the code, and says plainly that nothing uploaded.'));
+  return section('DIGITAL COPY', 'cd', rows);
+}
+
 function syncSection(){
   const code = (settings.syncCode || '').trim();
   const when = settings.syncLastAt
@@ -3995,7 +4242,7 @@ function syncSection(){
   rows.push(note(code ? 'info' : 'warn', code
     ? 'Layouts made on any device using this code turn up on the others. Put the same code into the browser, the iPad and the tablet and they stay in step — with AUTOMATIC on, on every launch and a couple of seconds after a layout is saved.'
     : 'No sync code yet. Press NEW CODE on the device that already has your layouts, then type that code into the others. There is no account to make: the code is the only thing that ties them together.'));
-  rows.push(note('warn', 'Only layouts and the paper sizes they need are sent. No photograph ever leaves the device — that is true of every build, and on the tablet it is now a promise about the code rather than something Android enforces, because sync needed the network permission the app used to go without.'));
+  rows.push(note('warn', 'Sync itself sends only layouts and the paper sizes they need — never a photograph. Photographs are a separate question, answered by DIGITAL COPY below: with that off, none ever leaves the device. On the tablet both are now promises about this code rather than something Android enforces, because sync needed the network permission the app used to go without.'));
   rows.push(note('info', 'The code is a shared secret, not a login. Anyone you give it to can read and overwrite these layouts, so treat it like the key to a filing cabinet: fine for designs, not for anything private.'));
   return section('SYNC', 'star', rows);
 }
@@ -4549,6 +4796,7 @@ const ACTIONS = {
   'printer-test': testPrint,
   'sync-now': () => syncNow(false),
   'sync-new-code': newSyncCodeFromAdmin,
+  'share-test': testShare,
 };
 
 document.addEventListener('click', e => {
@@ -4721,6 +4969,12 @@ if (HOLD_CAMERA) {
   });
 }
 
+// The upload runs while the DONE screen is up, so the line under the code
+// follows it rather than being written once and left to go stale.
+if (window.Cloud) Cloud.onChange(st => {
+  if (session.step === 'thankyou') paintShareNote(st);
+});
+
 // Exposed for poking at the renderer from the console during testing.
 window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 layoutToCanvas, registerCustom, registerCanvasLayout, renderCanvas,
@@ -4739,6 +4993,9 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 raiseFlash, dropFlash, normaliseExposure, testPrint,
                 tickViewfinder, setViewfinderRecording,
                 syncNow, syncPayload, syncAbsorb, newSyncCode,
+                // The digital copy.
+                share, shareConfig, shareLink, sharePrintLink, shareUpload,
+                sharePrintCanvas, showShareCode, paintShareNote,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.

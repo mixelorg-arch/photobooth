@@ -315,6 +315,20 @@
               <div class="px dim" data-cell="3">THANKS FOR STOPPING BY</div>
             </div>
           </div>
+          <!-- The digital copy. Hidden outright when the booth is not
+               uploading, so a booth with sharing off looks exactly as it
+               did before the feature existed. -->
+          <div class="row gap20 mid" id="ty-share" hidden>
+            <div class="qrwell"><canvas id="ty-qr" width="360" height="360"></canvas></div>
+            <div class="col gap10 grow">
+              <div class="px" data-cell="4">SCAN FOR A DIGITAL COPY</div>
+              <div class="row gap10 mid">
+                <span class="px dim" data-cell="2">CODE</span>
+                <span class="px" data-cell="5" id="ty-code">------</span>
+              </div>
+              <div class="mono dim" id="ty-share-note">Point your phone camera at the code.</div>
+            </div>
+          </div>
           <div class="mono dim">Collect your photo from the printer. Returning to the start…</div>
           <div class="row"><span class="grow"></span>
             <button class="btn solid" style="width:220px" data-act="abandon">
@@ -371,6 +385,7 @@
 </div>
 
 <script src="qr.js"></script>
+<script src="cloud.js"></script>
 <script src="booth.js"></script>
 <script src="editor.js"></script>
 </body>
