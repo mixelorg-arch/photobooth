@@ -790,6 +790,84 @@ bar is drawn from it instead — the same body, lens and flash, as a solid
 bitmap glyph in the icon table — and should be swapped for a real file when
 one arrives.
 
+## Two skins, one app
+
+Oct 3 2026. The guest side is a CRT terminal; **the operator's console and
+the layout editor are untouched** and stay the white module panel they have
+always been.
+
+That split was the brief, and it is also the right answer. A settings page
+wants to be legible under a cafe's lights with a thumb on it. A booth wants
+to look like a machine. And the moment the console comes up white, you know
+without being told that you have stopped being a guest and are standing in
+the back of the thing.
+
+One class does it: `go()` sets `body.operator` on `admin` and `editor`.
+Every rule in the terminal block is guarded by `body:not(.operator)`, and
+nothing may be written there without that guard.
+
+### What changed, and what did not
+
+**The palette did not.** Lavender, salmon, sage and slate still do all the
+signalling and still mean what they meant. What is new is the ground they sit
+on — a navy near-black with a blue rule — because a tube is not white paper.
+
+**The DOM did not.** A panel's label row was `[stub] [name] [rule] [value]
+[stub]`; last week that became a Mac title bar, and this week the same five
+parts became a folder tab: the name is a plate of ink with a cut corner and a
+`/` in front of it, the rule is the tab's shoulder, the stubs are the stacked
+card edges beside it. Three redesigns, no new markup.
+
+**The glass is over the whole machine now**, not just the camera well — scan
+lines, bloom, dark corners, and a roll bar that takes twelve seconds to cross
+so it reads as a tube rather than a novelty filter. The references are
+photographs *of screens*, and a crisp panel sitting inside a shredded one is
+the thing that gives it away. The well's own scan lines came off when the
+glass went on: two sets at different pitches is moiré, not a tube.
+
+### Three layout faults, found by measuring
+
+None of these were visible in a screenshot at the size I happened to be
+looking at. All three were found by asking the page for numbers.
+
+* **The review buttons were underneath the thumbnails.** On an 810x844
+  window the strip grew to a quarter of the window per shot, the panel grew
+  with it, and RETAKE ALL and LOOKS GOOD ended up beneath it — 38px of
+  overlap, i.e. a guest who cannot press either of the only two buttons on
+  the screen. **It predates this redesign** and measured *worse* in the white
+  skin (38px) than the new one (28px).
+* **The confirm panel spilled its last row over its own bottom border.** A
+  `.mod` is a flex column with `min-height:0`, so a short stage compresses it.
+  The row it lost was COPIES — the number a guest is about to pay for.
+* **My first fix made it worse.** Told only to shrink, a canvas with an
+  aspect ratio shrinks to nothing: the overlap went away and left four 12px
+  thumbnails. A fix that passes the assertion you wrote and destroys the
+  screen is still a bug; the assertion was "no overflow" when it should have
+  been "no overflow *and* the pictures are still worth looking at".
+
+The fix in the end was to stop dividing the window by a number. On a short
+portrait window the controls are sized by their contents and **the picture
+takes what is left** — `flex:1 1 auto` on the sheet, `flex:0 0 auto` on the
+column beside it. A `vh` fraction looks like a fix and only moves which
+window it breaks in.
+
+### The thing that keeps biting
+
+**CSS cannot size the pixel type.** `pixelTextCanvas` writes width and height
+as inline styles. It cost a title bar last week and the start screen's two
+tabs this week — at 375px the second tab's cut corner was eating the last
+letter of the first. Both are fixed from JS (`fitMenuBar`), which redraws the
+canvases at a smaller cell on a narrow window and again on resize. If a piece
+of pixel type is the wrong size, the fix is never in this stylesheet.
+
+### Verified
+
+At 810x844 and at 375x812, in both skins: no panel overflows its own box, no
+control sits under another, the review thumbnails stay between 64 and 120px,
+the five-row spec is whole, and the two tabs on the start screen clear each
+other's cut corners. The console renders exactly as it did before — white
+app, no glass, Mac windows.
+
 ## The tape overlay
 
 Both camera wells are dressed as a camcorder's on-screen display, from the

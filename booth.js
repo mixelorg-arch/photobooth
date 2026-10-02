@@ -2000,6 +2000,12 @@ function tickViewfinder(){
   const bar = el('#hdr-clock');
   if (bar) bar.textContent = p2(now.getHours()) + ':' + p2(now.getMinutes());
 
+  // The terminal's own date stamp, bottom right, in the reference's format.
+  const stamp = el('#ftr-date');
+  if (stamp) stamp.textContent = (now.getMonth() + 1) + '/' + now.getDate() + '/' +
+                                 now.getFullYear() + '  ' + p2(now.getHours()) + ':' +
+                                 p2(now.getMinutes());
+
   /* Tape remaining. A real deck counted down from what was left on the
    * cassette; this counts down from the idle reset, so the number on screen
    * is the one thing in the overlay that is actually true — it is how long
@@ -2646,9 +2652,18 @@ function compactStage(){ return window.innerWidth < 700; }
  * outrank those. A phone gets a smaller wordmark so the step counter beside
  * it keeps its own room. */
 function fitMenuBar(){
+  const w = window.innerWidth;
   const title = document.getElementById('hdr-title');
-  if (title) setPixel(title, undefined, window.innerWidth < 560 ? 3
-                                      : window.innerWidth < 760 ? 4 : 6);
+  if (title) setPixel(title, undefined, w < 560 ? 3 : w < 760 ? 4 : 6);
+
+  /* The start screen's two tabs, for the same reason and with the same
+   * constraint. A pixel canvas cannot be scaled down by CSS — its width and
+   * height are inline — so a tab that will not fit has to be *drawn*
+   * smaller, or its last letter disappears under the next tab's cut corner. */
+  const tab = document.querySelector('[data-screen="attract"] .mod-top b');
+  if (tab) setPixel(tab, undefined, w < 560 ? 2 : 4);
+  const count = document.getElementById('attract-layouts');
+  if (count) setPixel(count, undefined, w < 560 ? 2 : 3);
 }
 window.addEventListener('resize', fitMenuBar);
 const screens = {};
@@ -2686,6 +2701,15 @@ function go(step){
   // The back arrow is the ✕ of this language: present only inside a session.
   el('#hdr-back').hidden = (step === 'attract');
   if (step === 'capture') updateShotCount();
+  /* Two skins, one app.
+   *
+   * The guest side is a CRT terminal; the operator's console and the layout
+   * editor stay the white panel they always were. That is not indecision —
+   * it is the clearest signal in the whole app that you have left the thing
+   * a guest touches and are standing in the back of it. Settings pages want
+   * to be legible under a cafe's lights with a thumb on them; a booth wants
+   * to look like a machine. */
+  document.body.classList.toggle('operator', step === 'admin' || step === 'editor');
   trackScreen(step);
   // The attract screen is a mirror now, so it needs the camera as much as the
   // capture screen does. Failure is ignored: the stand-in copy is already
@@ -5116,6 +5140,10 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 tickViewfinder, setViewfinderRecording,
                 // The subject bracket.
                 trackScreen, paintTracker, coverRect,
+                // The screen builders, so a test can drive a real screen
+                // rather than a hand-assembled imitation of one.
+                go, showReview, showCopies, showConfirm, finishPrinting,
+                buildLayoutTiles, buildShotStrip, fail,
                 // The camera sources, so a test can feed the tracker a still
                 // through the same path a USB camera uses.
                 uvc, uvcImage, attractUvc, video, attractVideo,
