@@ -26,6 +26,14 @@
   --screen:#2B2B2B;      /* the dark display panel */
   --screen-grid:#4C4C4C;
 
+  /* The desktop behind the windows. A 50% checker is what the classic Mac
+     desktop was; at this lightness it reads as texture rather than grey, so
+     the app still comes up white-paper-first. */
+  --desk:#E7E7E7;
+  /* The phosphor inside the tube. The only green in the app, and it earns
+     its place: it is the one colour a camcorder's own readouts were. */
+  --phosphor:#C8E6A0;
+
   --rule:4px;
   --rule-thin:3px;
   --touch:64px;
@@ -54,12 +62,15 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
      height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
      display:flex;flex-direction:column;background:var(--paper);
      border:var(--rule) solid var(--ink)}
-.stage{position:relative;flex:1;min-height:0}
+.stage{position:relative;flex:1;min-height:0;
+       /* The desktop under the windows. */
+       background:repeating-conic-gradient(var(--desk) 0% 25%, var(--paper) 0% 50%) 0 0/6px 6px}
 .screen{position:absolute;inset:0;display:flex;flex-direction:column}
 .screen[hidden]{display:none}
 
 /* ---------- header ---------- */
-.hdr{flex:none;height:78px;display:flex;align-items:center;gap:12px;padding:0 12px;
+.hdr{flex:none;height:62px;display:flex;align-items:center;gap:12px;padding:0 10px;
+     background:var(--paper);
      border-bottom:var(--rule) solid var(--ink)}
 .hdr-back{width:52px;height:52px;flex:none;border:var(--rule) solid var(--ink);background:var(--paper);
           display:grid;place-items:center;cursor:pointer}
@@ -74,11 +85,33 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .hdr-val{flex:none;display:flex;justify-content:flex-end;white-space:nowrap}
 .hatch{min-width:18px}
 
-/* The stacked-line hatch either side of the title. Pure decoration, and the
-   thing that makes the header read as a silkscreened panel. */
-.hatch{flex:1;min-width:24px;height:34px;
-       background:repeating-linear-gradient(to bottom,
-         var(--ink) 0 var(--rule-thin), transparent var(--rule-thin) 9px)}
+/* The hatch used to be silkscreen furniture either side of the title. It is
+   now the empty run of menu bar between the menus and the status — the part
+   of a Mac menu bar that is just bar. Kept as a hairline rather than removed,
+   so the eye still has a line to follow across. */
+.hatch{flex:1;min-width:16px;height:0;border-top:2px solid var(--hair)}
+
+/* The menu titles. Furniture, and labelled as such: they are not buttons,
+   they do not open, and a guest never touches them. They exist because a
+   menu bar with nothing in it does not read as a menu bar, and this app has
+   no menus to give it — every control it has is a button on the screen in
+   front of you. */
+.menus{display:flex;gap:16px;flex:none;font-family:var(--mono);font-size:15px;
+       font-weight:700;letter-spacing:.04em;color:var(--ink)}
+.menus span{opacity:.75}
+@media (max-width:860px){ .menus span:nth-child(n+3){display:none} }
+@media (max-width:640px){ .menus{display:none} }
+
+/* The mark. A solid box, because the menu bar is 62px tall and an outline
+   that thin disappears at this size. */
+.mark{flex:none;width:40px;height:40px;display:grid;place-items:center;
+      border:var(--rule-thin) solid var(--ink);background:var(--ink)}
+.mark canvas{filter:invert(1)}
+
+.hdr-clock{flex:none;font-family:var(--mono);font-size:15px;font-weight:700;
+           letter-spacing:.06em;font-variant-numeric:tabular-nums;
+           padding-left:12px;border-left:2px solid var(--hair)}
+@media (max-width:520px){ .hdr-clock{display:none} }
 
 /* ---------- footer ---------- */
 .ftr{flex:none;height:52px;display:flex;align-items:center;gap:14px;padding:0 14px;
@@ -87,22 +120,50 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .meter{width:150px;height:26px;flex:none;border:var(--rule-thin) solid var(--ink);padding:3px}
 .meter i{display:block;height:100%;width:35%;background:var(--sage)}
 
-/* ---------- module frame ---------- */
+/* ---------- the window ----------
+ *
+ * A module is now a window. The DOM did not change by one element to do it:
+ * the label row was already [stub] [name] [rule] [value] [stub], which is
+ * exactly a classic title bar — close box, title plate, pinstripes, zoom
+ * box. Only what those parts are painted as changed.
+ *
+ * The hard offset shadow is a deliberate break from "no shadows". That rule
+ * exists to keep bevels and soft glows out; a flat black rectangle offset by
+ * five pixels is neither. It is the one thing that makes a window sit *on*
+ * the desktop rather than be a hole cut in it.
+ */
 .mod{border:var(--rule) solid var(--ink);border-top:0;background:var(--paper);
-     display:flex;flex-direction:column;min-height:0}
+     display:flex;flex-direction:column;min-height:0;
+     box-shadow:5px 5px 0 var(--ink)}
 .mod.fill{flex:1}
 .mod.wide{width:min(900px,92%)}
 .mod.dialog{width:min(760px,90%);background:var(--paper)}
 .mod.alarm{border-color:var(--salmon)}
-.mod.alarm .mod-top .ln{border-top-color:var(--salmon)}
+.mod.alarm .mod-top .ln{background-image:repeating-linear-gradient(to bottom,
+   var(--salmon) 0 2px, transparent 2px 5px)}
+.mod.alarm .mod-top .ln.s{border-color:var(--salmon)}
 
-/* The label row IS the top rule: stub, name, long rule, value, stub. */
-.mod-top{display:flex;align-items:center;gap:10px;margin:0 calc(var(--rule) * -1);padding:0 2px;flex:none}
-.mod-top .ln{height:0;border-top:var(--rule) solid var(--ink);flex:1;min-width:14px}
-.mod-top .ln.s{flex:0 0 18px}
-/* The legend name shrinks before the rule does — a clipped module title is
-   the one thing that breaks the silkscreen illusion. */
-.mod-top b{flex:0 1 auto;min-width:0;display:flex;align-items:center;overflow:hidden}
+/* The title bar. */
+.mod-top{display:flex;align-items:center;gap:9px;margin:0 calc(var(--rule) * -1);
+         padding:5px 6px;flex:none;
+         background:var(--paper);
+         border:var(--rule) solid var(--ink);border-bottom-width:var(--rule-thin)}
+/* Pinstripes, drawn from the top rule they replace. */
+.mod-top .ln{height:15px;border-top:0;flex:1;min-width:14px;
+             background-image:repeating-linear-gradient(to bottom,
+               var(--ink) 0 2px, transparent 2px 5px)}
+/* The stubs become the close box and the zoom box. They are drawn, not
+   wired: there is nothing to close and nothing to zoom in a kiosk, and a
+   box that looked live and did nothing would be worse than one that plainly
+   belongs to the picture of a window. */
+.mod-top .ln.s{flex:0 0 19px;height:19px;background-image:none;
+               border:var(--rule-thin) solid var(--ink);background-color:var(--paper)}
+.mod-top .ln.s:last-child{background-color:var(--paper);
+  background-image:linear-gradient(to bottom, var(--ink) 0 3px, transparent 3px)}
+/* The legend name shrinks before the pinstripes do — a clipped window title
+   is the one thing that breaks the illusion. */
+.mod-top b{flex:0 1 auto;min-width:0;display:flex;align-items:center;overflow:hidden;
+           padding:0 10px}
 
 .mod-in{padding:20px;display:flex;flex-direction:column;gap:20px;flex:1;min-height:0}
 .mod-in.tight{padding:10px;gap:10px}
@@ -405,8 +466,12 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   .hdr-back{width:42px;height:42px}
   /* The hatch and the badge are scenery; the wordmark and the step counter
      are not. On a phone the scenery goes so the wordmark keeps its size. */
-  .hatch,.hdr-badge{display:none}
-  .hdr-title canvas{max-height:26px;width:auto}
+  /* The hatch is the gap now, not decoration: without it the app name and
+     the step counter touch on a phone. The old `max-height` on the title
+     never did anything — pixelTextCanvas sets the canvas size inline, and
+     inline wins — so the size is set from JS instead. */
+  .hdr-badge{display:none}
+  .hatch{flex:1;min-width:8px}
   .ftr{height:44px;gap:10px;padding:0 10px}
   .meter{width:84px;height:22px}
 
@@ -710,8 +775,13 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
  * yourself in from across a room and one you have to lean into. */
 [data-screen="attract"] .pad{gap:8px;padding:0}
 [data-screen="attract"] .mod-in.tight{padding:var(--rule-thin)}
-[data-screen="attract"] .mod-top{height:30px}
-[data-screen="attract"] .mod-top b{font-size:11px}
+/* The attract title bar stays out of the way, so it is the one that is
+   capped. The cap is a number here and a smaller `data-cell` in the markup,
+   not a CSS height on the canvas: pixelTextCanvas sets the canvas size
+   *inline*, and an inline style wins against any rule in this file. The bar
+   has to be told to fit the title rather than the other way round, or the
+   window name grows past its own bar and the frame overdraws it. */
+[data-screen="attract"] .mod-top{height:42px;padding:3px 6px}
 
 @media (max-width: 700px){
   .attract-go{width:86%;min-height:60px}
@@ -723,9 +793,13 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
  * The tape overlay.
  *
  * Taken from the reference: a camcorder's on-screen display, burned into the
- * corners of the picture. White monospace on the live image, nothing else —
- * no corner brackets, no vignette, no scan lines. The reference is clean, and
- * the restraint is why it reads as a recording rather than as a filter.
+ * corners of the picture. White monospace on the live image.
+ *
+ * It began as type alone — no brackets, no vignette, no scan lines — because
+ * the first reference was clean. The second set of references was not: they
+ * are tube pictures, with the frame marks and the lines and the dark corners
+ * that come with a tube. Those live in "the tube" block further down; this
+ * block is still only the type.
  *
  * Three blocks, each a stack of short lines:
  *
@@ -809,3 +883,93 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
   image-rendering:crisp-edges;
 }
 @media (max-width:760px){ .qrwell canvas{width:150px;height:150px} }
+
+/* ==================================================================== *
+ * The tube
+ *
+ * Everything between the lens and the glass: scan lines, the bloom at the
+ * edges, the head-switching band a VHS deck left along the bottom of every
+ * frame, and the brackets that sit on a face.
+ *
+ * All of it is CSS over the <video>, never a filter on it. A filter on a
+ * live preview is paid for sixty times a second on a tablet; a static
+ * overlay is composited once. And none of it can reach a photograph — the
+ * capture reads the video element, not the page.
+ * ==================================================================== */
+.vhs{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+
+/* Scan lines. Two pixels of picture, one of gap, which is coarse enough to
+   read as a tube at arm's length and fine enough not to strobe when the
+   guest moves. */
+.vhs::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(to bottom,
+    rgba(0,0,0,.22) 0 1px, transparent 1px 3px);}
+
+/* The bloom, and the dark corners every consumer lens had. */
+.vhs::after{content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(130% 115% at 50% 46%, transparent 55%, rgba(0,0,0,.34) 100%),
+    linear-gradient(to bottom, rgba(200,230,160,.07), transparent 22%);}
+
+/* Head switching: the ragged band of noise a tape deck left in the bottom
+   few scan lines, just inside the frame. It drifts, because it never sat
+   still on a real deck either. */
+.vhs i{position:absolute;left:0;right:0;height:9px;bottom:5px;
+  background:repeating-linear-gradient(to right,
+    rgba(255,255,255,.22) 0 3px, transparent 3px 7px, rgba(255,255,255,.1) 7px 11px);
+  opacity:.5;animation:vhs-drift 7s linear infinite}
+@keyframes vhs-drift{from{transform:translateX(-14px)}to{transform:translateX(14px)}}
+
+/* The framing corners. Four marks at the edge of the picture, the way a
+   finder shows you where the frame actually ends. */
+.vf-corner{position:absolute;width:30px;height:30px;
+  border:var(--rule-thin) solid rgba(255,255,255,.85);
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.9))}
+.vf-corner.tl{top:14px;left:14px;border-right:0;border-bottom:0}
+.vf-corner.tr{top:14px;right:14px;border-left:0;border-bottom:0}
+.vf-corner.bl{bottom:14px;left:14px;border-right:0;border-top:0}
+.vf-corner.br{bottom:14px;right:14px;border-left:0;border-top:0}
+@media (max-width:700px){
+  .vf-corner{width:19px;height:19px}
+  .vf-corner.tl,.vf-corner.tr{top:9px}
+  .vf-corner.bl,.vf-corner.br{bottom:9px}
+  .vf-corner.tl,.vf-corner.bl{left:9px}
+  .vf-corner.tr,.vf-corner.br{right:9px}
+}
+
+/* ---------- the subject bracket ----------
+   Phosphor green, because that is the one colour a camcorder's own readouts
+   were, and because none of the four print accents should appear on a thing
+   that is not in the print. */
+.vf-track{position:absolute;z-index:5;pointer-events:none;
+  transition:left .12s linear, top .12s linear, width .12s linear, height .12s linear, opacity .25s;
+  opacity:0}
+.vf-track.on{opacity:1}
+.vf-track u{position:absolute;width:26%;height:26%;min-width:12px;min-height:12px;
+  border:var(--rule-thin) solid var(--phosphor);
+  box-shadow:0 0 6px rgba(200,230,160,.55)}
+.vf-track u.tl{top:0;left:0;border-right:0;border-bottom:0}
+.vf-track u.tr{top:0;right:0;border-left:0;border-bottom:0}
+.vf-track u.bl{bottom:0;left:0;border-right:0;border-top:0}
+.vf-track u.br{bottom:0;right:0;border-left:0;border-top:0}
+/* The label rides under the box, and never above it: at the top of the
+   frame it would cover the forehead it is pointing at. */
+.vf-track b{position:absolute;top:100%;left:0;margin-top:5px;
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.16em;
+  color:#15210C;background:var(--phosphor);padding:2px 6px;white-space:nowrap}
+/* Locked on: the box stops breathing and the label changes. Before that it
+   pulses, which is what "still looking" looked like on the hardware. */
+.vf-track:not(.lock) u{animation:vf-hunt 1.1s ease-in-out infinite}
+@keyframes vf-hunt{50%{opacity:.35}}
+
+/* The state line in the top-left block gains the tape's own readouts, the
+   way the reference burns them in: speed, and how much tape is left. */
+.vf-sp{display:flex;align-items:center;gap:9px}
+.vf-sp em{font-style:normal;border:2px solid currentColor;padding:0 4px;font-size:13px}
+
+/* TAPE END and the other deck messages. The camera-error panel is one of
+   these now: a dead preview with a line of grey body copy under it looked
+   like a web page had broken, and this looks like a tape ran out. */
+.cam-msg{background:#101010;color:#FFFFFF;font-size:clamp(15px,2.6vw,26px);
+  font-weight:700;letter-spacing:.2em;line-height:1.9;text-transform:uppercase;
+  text-shadow:0 0 10px rgba(255,255,255,.35)}
