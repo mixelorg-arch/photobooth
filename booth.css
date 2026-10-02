@@ -835,389 +835,306 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 }
 
 /* ==================================================================== *
- * The tape overlay.
+ * THE KIT
  *
- * Taken from the reference: a camcorder's on-screen display, burned into the
- * corners of the picture. White monospace on the live image.
+ * Everything above this line is layout: what sits beside what, what gives
+ * way first, what a phone does differently. Everything below is the look,
+ * and it is the only place the look lives.
  *
- * It began as type alone — no brackets, no vignette, no scan lines — because
- * the first reference was clean. The second set of references was not: they
- * are tube pictures, with the frame marks and the lines and the dark corners
- * that come with a tube. Those live in "the tube" block further down; this
- * block is still only the type.
+ * Drawn from the component sheet: one dark outline weight, white fills,
+ * generous radii, and nothing else. No shadows, no gradients, no second
+ * stroke, no colour except where colour is the information.
  *
- * Three blocks, each a stack of short lines:
+ * Three shapes do all the work:
+ *   pill   — anything you press
+ *   card   — anything that holds something
+ *   well   — anything that shows a picture
  *
- *   top left     CAMERA1 / PLAY > / 00:00:00      what and how long
- *   top right    VCR TAPE / <event>               the medium
- *   bottom left  11:20 / 28.09.2026 SAT           the imprint
- *
- * All of it is furniture: `pointer-events:none` throughout so nothing can
- * swallow a tap, and none of it is in the printed sheet.
- * ==================================================================== */
-.vf{position:absolute;inset:0;pointer-events:none;z-index:3;
-    font-family:var(--mono);color:#FFFFFF;
-    /* A soft bloom, because this type was a CRT overlay and a hairline white
-       on a bright face would otherwise disappear. */
-    text-shadow:0 0 6px rgba(255,255,255,.25),0 2px 3px rgba(0,0,0,.95)}
-
-.vf-b{position:absolute;display:flex;flex-direction:column;gap:5px}
-.vf-b.tl{top:16px;left:18px;align-items:flex-start}
-.vf-b.tr{top:16px;right:18px;align-items:flex-end;text-align:right}
-.vf-b.bl{bottom:16px;left:18px;align-items:flex-start}
-
-.vf-l{font-size:17px;font-weight:700;letter-spacing:.11em;line-height:1.1;
-      white-space:nowrap;font-variant-numeric:tabular-nums}
-
-/* The transport state. PLAY while the booth is idle, REC once the shutter
-   sequence is running — the one moment a guest needs to know the difference. */
-.vf-state{display:flex;align-items:center;gap:8px}
-.vf-state b{font-size:15px;line-height:1}
-.vf-dot{width:12px;height:12px;border-radius:50%;background:#E23B2E;flex:none;
-        display:none;box-shadow:0 0 8px rgba(226,59,46,.8)}
-/* Blinking, not steady: a steady red light is what a fault looks like on real
-   hardware, and every camcorder blinked while it rolled. */
-.vf.rec .vf-dot{display:block;animation:vf-blink 1s steps(2,end) infinite}
-.vf.rec .vf-state b{display:none}
-@keyframes vf-blink{50%{opacity:.12}}
-
-.vf-clock{font-size:20px}
-.vf-date{font-size:20px}
-
-/* The overlay belongs to the picture, so it scales with the well rather than
-   sitting at one size on every screen. */
-@media (max-width: 700px){
-  .vf-b.tl,.vf-b.tr{top:10px}
-  .vf-b.bl{bottom:10px}
-  .vf-b.tl,.vf-b.bl{left:11px}
-  .vf-b.tr{right:11px}
-  .vf-l{font-size:12px;letter-spacing:.09em}
-  .vf-clock,.vf-date{font-size:14px}
-  .vf-dot{width:9px;height:9px}
-}
-
-/* The crop guide and the countdown sit above the tape furniture. */
-.guide{z-index:4}
-.osd{z-index:6}
-
-/* On the capture screen the countdown's own bar occupies the foot of the
-   well, so the imprint moves up to clear it. It stays bottom-left — that is
-   where the reference puts it and where a camcorder burned it — just above
-   the bar rather than under it. */
-[data-screen="capture"] .vf-b.bl{bottom:58px}
-@media (max-width: 700px){
-  [data-screen="capture"] .vf-b.bl{bottom:46px}
-}
-
-/* ---- the digital copy, on the DONE screen ---------------------------- *
- * A QR is read by a camera, so it gets paper-white and a hard edge rather
- * than the panel's tint: contrast is the only thing a scanner cares about,
- * and a tinted quiet zone is what makes codes fail at arm's length. */
-.qrwell{
-  flex:0 0 auto;
-  background:#FFFFFF;
-  border:4px solid var(--ink,#111111);
-  padding:8px;
-  line-height:0;
-}
-.qrwell canvas{
-  display:block;
-  width:196px;height:196px;
-  /* Never resample a QR: a half module is a module a phone cannot read. */
-  image-rendering:pixelated;
-  image-rendering:crisp-edges;
-}
-@media (max-width:760px){ .qrwell canvas{width:150px;height:150px} }
-
-/* ==================================================================== *
- * The tube
- *
- * Everything between the lens and the glass: scan lines, the bloom at the
- * edges, the head-switching band a VHS deck left along the bottom of every
- * frame, and the brackets that sit on a face.
- *
- * All of it is CSS over the <video>, never a filter on it. A filter on a
- * live preview is paid for sixty times a second on a tablet; a static
- * overlay is composited once. And none of it can reach a photograph — the
- * capture reads the video element, not the page.
- * ==================================================================== */
-.vhs{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
-
-/* Scan lines. Two pixels of picture, one of gap, which is coarse enough to
-   read as a tube at arm's length and fine enough not to strobe when the
-   guest moves. */
-.vhs::before{content:'';position:absolute;inset:0;
-  background:repeating-linear-gradient(to bottom,
-    rgba(0,0,0,.22) 0 1px, transparent 1px 3px);}
-
-/* The bloom, and the dark corners every consumer lens had. */
-.vhs::after{content:'';position:absolute;inset:0;
-  background:
-    radial-gradient(130% 115% at 50% 46%, transparent 55%, rgba(0,0,0,.34) 100%),
-    linear-gradient(to bottom, rgba(200,230,160,.07), transparent 22%);}
-
-/* Head switching: the ragged band of noise a tape deck left in the bottom
-   few scan lines, just inside the frame. It drifts, because it never sat
-   still on a real deck either. */
-.vhs i{position:absolute;left:0;right:0;height:9px;bottom:5px;
-  background:repeating-linear-gradient(to right,
-    rgba(255,255,255,.22) 0 3px, transparent 3px 7px, rgba(255,255,255,.1) 7px 11px);
-  opacity:.5;animation:vhs-drift 7s linear infinite}
-@keyframes vhs-drift{from{transform:translateX(-14px)}to{transform:translateX(14px)}}
-
-/* The framing corners. Four marks at the edge of the picture, the way a
-   finder shows you where the frame actually ends. */
-.vf-corner{position:absolute;width:30px;height:30px;
-  border:var(--rule-thin) solid rgba(255,255,255,.85);
-  filter:drop-shadow(0 1px 2px rgba(0,0,0,.9))}
-.vf-corner.tl{top:14px;left:14px;border-right:0;border-bottom:0}
-.vf-corner.tr{top:14px;right:14px;border-left:0;border-bottom:0}
-.vf-corner.bl{bottom:14px;left:14px;border-right:0;border-top:0}
-.vf-corner.br{bottom:14px;right:14px;border-left:0;border-top:0}
-@media (max-width:700px){
-  .vf-corner{width:19px;height:19px}
-  .vf-corner.tl,.vf-corner.tr{top:9px}
-  .vf-corner.bl,.vf-corner.br{bottom:9px}
-  .vf-corner.tl,.vf-corner.bl{left:9px}
-  .vf-corner.tr,.vf-corner.br{right:9px}
-}
-
-/* ---------- the subject bracket ----------
-   Phosphor green, because that is the one colour a camcorder's own readouts
-   were, and because none of the four print accents should appear on a thing
-   that is not in the print. */
-.vf-track{position:absolute;z-index:5;pointer-events:none;
-  transition:left .12s linear, top .12s linear, width .12s linear, height .12s linear, opacity .25s;
-  opacity:0}
-.vf-track.on{opacity:1}
-.vf-track u{position:absolute;width:26%;height:26%;min-width:12px;min-height:12px;
-  border:var(--rule-thin) solid var(--phosphor);
-  box-shadow:0 0 6px rgba(200,230,160,.55)}
-.vf-track u.tl{top:0;left:0;border-right:0;border-bottom:0}
-.vf-track u.tr{top:0;right:0;border-left:0;border-bottom:0}
-.vf-track u.bl{bottom:0;left:0;border-right:0;border-top:0}
-.vf-track u.br{bottom:0;right:0;border-left:0;border-top:0}
-/* The label rides under the box, and never above it: at the top of the
-   frame it would cover the forehead it is pointing at. */
-.vf-track b{position:absolute;top:100%;left:0;margin-top:5px;
-  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.16em;
-  color:#15210C;background:var(--phosphor);padding:2px 6px;white-space:nowrap}
-/* Locked on: the box stops breathing and the label changes. Before that it
-   pulses, which is what "still looking" looked like on the hardware. */
-.vf-track:not(.lock) u{animation:vf-hunt 1.1s ease-in-out infinite}
-@keyframes vf-hunt{50%{opacity:.35}}
-
-/* The state line in the top-left block gains the tape's own readouts, the
-   way the reference burns them in: speed, and how much tape is left. */
-.vf-sp{display:flex;align-items:center;gap:9px}
-.vf-sp em{font-style:normal;border:2px solid currentColor;padding:0 4px;font-size:13px}
-
-/* TAPE END and the other deck messages. The camera-error panel is one of
-   these now: a dead preview with a line of grey body copy under it looked
-   like a web page had broken, and this looks like a tape ran out. */
-.cam-msg{background:#101010;color:#FFFFFF;font-size:clamp(15px,2.6vw,26px);
-  font-weight:700;letter-spacing:.2em;line-height:1.9;text-transform:uppercase;
-  text-shadow:0 0 10px rgba(255,255,255,.35)}
-
-/* ==================================================================== *
- * THE TERMINAL — the guest side of SnapBox
- *
- * Drawn from the references: a tube UI of nested panels, folder-tab titles
- * carrying a path, a bright selection bar, dithered type on navy, a status
- * line along the bottom, and scan lines over all of it. The camcorder's
- * burned-in readouts live on the picture inside it.
- *
- * SCOPE: `body:not(.operator)`. The operator's console and the layout
- * editor keep the white module-panel look untouched — that contrast is the
- * point, and it is the clearest signal in the app that you have stopped
- * being a guest. Nothing in this block may be written without that guard.
- *
- * COLOUR: the four SnapBox accents are unchanged and still do all the
- * signalling. What is new is only the ground they sit on and the ink that
- * reads against it, because a tube is not white paper.
+ * The earlier passes (a silkscreen panel, a Mac desktop, a CRT terminal)
+ * are gone rather than layered under this one. A stylesheet that carries
+ * four looks is a stylesheet where nobody can tell which rule is live.
  * ==================================================================== */
 :root{
-  --crt-bg:#0C1524;        /* the tube's black, with blue in it */
-  --crt-panel:#152541;     /* a window's ground */
-  --crt-deep:#0A1120;      /* a well, or anything recessed */
-  --crt-line:#4C79B8;      /* the blue rule every panel is drawn with */
-  --crt-ink:#EAF1FF;
-  --crt-dim:#8FA6C6;
+  --ink:#3B404B;          /* the one outline, and the one type colour */
+  --paper:#FFFFFF;
+  --wash:#D9DADC;         /* the ground everything sits on */
+  --dim:#7E838E;
+  --hair:#C3C6CC;
+
+  --stroke:3px;
+  --r-card:18px;
+  --r-ctrl:12px;
+  --r-pill:999px;
+
+  --ui:"SF Pro Rounded",ui-rounded,-apple-system,"Segoe UI Variable Display",
+       "Segoe UI",Roboto,"Helvetica Neue",system-ui,sans-serif;
 }
 
-body:not(.operator) .app{background:var(--crt-bg);border-color:var(--crt-line)}
-body:not(.operator) .stage{background:var(--crt-bg)}
+body{font-family:var(--ui);color:var(--ink);-webkit-font-smoothing:antialiased;
+     background:var(--wash)}
+.app{background:var(--wash);border:0}
+.stage{background:var(--wash)}
 
-/* Pixel type is drawn black into a canvas and cannot be recoloured from
-   here — pixelTextCanvas bakes the fill. Inverting the canvas is how the
-   rest of this app has always put that type on a dark ground. */
-body:not(.operator) .px canvas{filter:invert(1)}
-body:not(.operator) .dim canvas{opacity:.55}
+/* Labels. `cell` still sizes them; setPixel writes the size inline. */
+.px{display:inline-flex;align-items:center;max-width:100%;min-width:0;
+    font-family:var(--ui);font-weight:800;letter-spacing:.005em;line-height:1.05;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-block}
+.px.dim,.dim{color:var(--dim)}
+/* The pixel icons predate this kit and are the one thing in it that is not
+   drawn in a single outline weight. Replacing the set is a job of its own;
+   draining the colour out of them is enough to stop them arguing with it. */
+.ic canvas{filter:grayscale(1) contrast(1.1)}
+.mono{font-family:var(--ui);font-weight:600;font-size:14px;line-height:1.6;
+      letter-spacing:0;color:var(--dim)}
+.mono.dim{color:var(--dim)}
 
-/* ---------- the status lines ---------- */
-body:not(.operator) .hdr{background:var(--crt-panel);
-  border-bottom:var(--rule-thin) solid var(--crt-line)}
-body:not(.operator) .menus{display:none}
-body:not(.operator) .hdr-clock,
-body:not(.operator) .ftr-ver,
-body:not(.operator) .ftr-date{color:var(--crt-dim);border-color:#2B4066}
-body:not(.operator) .hatch{border-top-color:#2B4066}
-body:not(.operator) .mark{background:var(--crt-ink);border-color:var(--crt-ink)}
-body:not(.operator) .mark canvas{filter:none}
-body:not(.operator) .hdr-back{background:var(--crt-panel);border-color:var(--crt-line)}
-body:not(.operator) .hdr-back:active{background:var(--crt-ink)}
-body:not(.operator) .hdr-back:active canvas{filter:none}
+/* ---------- the bar ---------- */
+.hdr{height:66px;gap:10px;padding:0 14px;background:transparent;border:0}
+.hdr-title{flex:0 1 auto;min-width:0}
+.hatch,.menus,.hdr-badge,.ftr-ver{display:none}
+.hdr-back{width:48px;height:48px;border:var(--stroke) solid var(--ink);
+          border-radius:var(--r-pill);background:var(--paper);color:var(--ink)}
+.hdr-back:active{background:var(--ink);color:var(--paper)}
+.mark{width:44px;height:44px;border:var(--stroke) solid var(--ink);
+      border-radius:var(--r-ctrl);background:var(--paper);display:grid;place-items:center}
+.mark canvas{filter:none}
+/* The two readouts are pills, the way the reference floats its labels. */
+.hdr-val,.hdr-clock,.ftr-date{flex:none;padding:7px 15px;border-radius:var(--r-pill);
+  border:var(--stroke) solid var(--ink);background:var(--paper);color:var(--ink);
+  font-family:var(--ui);font-weight:800;font-size:13px;letter-spacing:.02em;
+  font-variant-numeric:tabular-nums;display:flex;align-items:center}
+.hdr-clock{border-width:0;background:transparent;padding:0 2px;color:var(--dim)}
+@media (max-width:560px){ .hdr-clock,.ftr-date{display:none} }
 
-.ftr-ver,.ftr-date{font-family:var(--mono);font-size:13px;font-weight:700;
-  letter-spacing:.08em;font-variant-numeric:tabular-nums;color:var(--dim);flex:none}
-.ftr-date{padding-right:4px}
-@media (max-width:620px){ .ftr-ver,.ftr-date{display:none} }
+.ftr{height:56px;gap:12px;padding:0 16px;background:transparent;border:0}
+.lead{border-top:var(--stroke) dotted var(--hair);height:0;flex:1}
+.meter{width:150px;height:20px;border:var(--stroke) solid var(--ink);
+       border-radius:var(--r-pill);padding:0;overflow:hidden;background:var(--paper)}
+.meter i{display:block;height:100%;background:var(--ink);border-radius:var(--r-pill)}
+.hr{border-top:var(--stroke) dotted var(--hair)}
 
-body:not(.operator) .ftr{background:var(--crt-panel);
-  border-top:var(--rule-thin) solid var(--crt-line)}
-body:not(.operator) .lead{border-top-color:#2B4066}
-body:not(.operator) .meter{border-color:var(--crt-line)}
-body:not(.operator) .meter i{background:var(--sage)}
+/* ---------- the card ---------- */
+.mod{background:var(--paper);border:var(--stroke) solid var(--ink);
+     border-radius:var(--r-card);box-shadow:none;overflow:hidden}
+.mod.alarm{border-color:var(--ink)}
+/* The title row: name on the left, value on the right, a dotted rule under
+   both — the card from the sheet, which divides its header the same way. */
+.mod-top{margin:0;padding:14px 18px 11px;gap:12px;align-items:center;
+         justify-content:space-between;background:transparent;border:0;
+         border-bottom:var(--stroke) dotted var(--hair)}
+.mod-top .ln{display:none}
+.mod-top b{padding:0;background:transparent;clip-path:none;flex:0 1 auto;min-width:0}
+.mod-top b::before{content:none}
+.mod-in{padding:18px}
+.mod-in.tight{padding:10px;gap:10px}
+.banner{gap:12px;padding:2px 2px 6px}
 
-/* ---------- panels ----------
-   A window here is a card with a tab, not a Mac title bar: the reference's
-   panels carry a path on a folder tab and a stack of card edges beside it. */
-body:not(.operator) .mod{background:var(--crt-panel);
-  border:var(--rule-thin) solid var(--crt-line);border-top:0;
-  box-shadow:6px 6px 0 rgba(0,0,0,.55)}
-body:not(.operator) .mod.alarm{border-color:var(--salmon)}
-
-body:not(.operator) .mod-top{background:transparent;border:0;padding:0;
-  margin:0 calc(var(--rule-thin) * -1);gap:0;align-items:flex-end}
-/* The tab. A plate of ink with a cut corner, the title dark inside it. */
-body:not(.operator) .mod-top b{background:var(--crt-ink);padding:3px 16px 3px 10px;
-  clip-path:polygon(0 0, calc(100% - 11px) 0, 100% 100%, 0 100%);
-  border-bottom:0}
-body:not(.operator) .mod-top b canvas{filter:none}
-/* The path mark before the title, exactly the reference's `/main_menu`. */
-body:not(.operator) .mod-top b::before{content:'/';font-family:var(--mono);
-  font-weight:700;font-size:14px;color:#2A3A55;margin-right:5px}
-/* The rule becomes the tab's shoulder: a thin line at the bottom of the
-   strip, so the tab reads as sitting on the panel rather than floating. */
-body:not(.operator) .mod-top .ln{height:0;background-image:none;
-  border-top:var(--rule-thin) solid var(--crt-line);align-self:flex-end;
-  margin-bottom:0}
-/* The stubs become the stacked card edges beside the tab. */
-body:not(.operator) .mod-top .ln.s{flex:0 0 16px;height:13px;border:0;
-  background-color:transparent;background-image:repeating-linear-gradient(to right,
-    var(--crt-line) 0 2px, transparent 2px 5px);align-self:flex-end}
-body:not(.operator) .mod-top .ln.s:last-child{background-image:
-  repeating-linear-gradient(to right, var(--crt-line) 0 2px, transparent 2px 5px)}
-
-body:not(.operator) .hr{border-top-color:#2B4066}
-body:not(.operator) .banner .lead{border-top-color:#2B4066}
-
-/* ---------- controls ---------- */
-body:not(.operator) .btn{background:var(--crt-panel);
-  border:var(--rule-thin) solid var(--crt-line);color:var(--crt-ink)}
-body:not(.operator) .btn canvas{filter:invert(1)}
-body:not(.operator) .btn:active{background:var(--crt-ink)}
-body:not(.operator) .btn:active canvas{filter:none}
-/* The primary action is the reference's selection bar: a solid bright
-   stripe with the label knocked out of it. */
-body:not(.operator) .btn.solid{background:var(--lavender);border-color:var(--crt-ink)}
-body:not(.operator) .btn.solid canvas{filter:none}
-body:not(.operator) .btn.solid:active{background:var(--crt-ink)}
-body:not(.operator) .btn.tint-salmon{background:var(--salmon);border-color:var(--crt-ink)}
-body:not(.operator) .btn.tint-salmon canvas{filter:none}
-body:not(.operator) .btn.tint-sage{background:var(--sage);border-color:var(--crt-ink)}
-body:not(.operator) .btn.tint-sage canvas{filter:none}
-body:not(.operator) .btn:disabled{background:repeating-linear-gradient(45deg,
-  var(--crt-deep) 0 6px, var(--crt-panel) 6px 12px);border-color:#2B4066}
-body:not(.operator) .btn.sqr{border-color:var(--crt-line)}
-
-body:not(.operator) .bigbox{background:var(--crt-deep);
-  border:var(--rule-thin) solid var(--crt-line)}
-body:not(.operator) .bigbox::after{background:var(--lavender)}
-
-body:not(.operator) .spec .lead{border-top-color:#2B4066}
-body:not(.operator) .spec .v{border-color:var(--crt-line);background:var(--crt-deep)}
+/* ---------- the pill ---------- */
+.btn{min-height:58px;padding:0 clamp(14px,2vw,26px);
+     border:var(--stroke) solid var(--ink);border-radius:var(--r-pill);
+     background:var(--paper);color:var(--ink);gap:10px}
+.btn:active{background:var(--ink);color:var(--paper)}
+.btn.solid{background:var(--ink);color:var(--paper)}
+.btn.solid:active{background:var(--paper);color:var(--ink)}
+/* The kit has no second colour, so a destructive action is an outlined
+   pill against a filled one rather than a red one. SAVE PNG is the same
+   shape with a dotted outline: present, clearly secondary. */
+.btn.tint-salmon{background:var(--paper);color:var(--ink)}
+.btn.tint-sage{background:var(--paper);color:var(--ink);border-style:dashed}
+.btn:disabled{background:var(--paper);border-color:var(--hair);color:var(--hair)}
+.btn.sqr{width:84px;height:84px;border-radius:var(--r-pill);padding:0}
+.btn.huge{min-height:96px}
+.btn canvas{filter:none}
 
 /* ---------- wells ---------- */
-body:not(.operator) .screenwell{background:var(--crt-deep);border-color:var(--crt-line)}
-body:not(.operator) .sheetwell{background:var(--crt-deep);border-color:var(--crt-line)}
+.screenwell{background:#2A2D34;border:var(--stroke) solid var(--ink);
+            border-radius:var(--r-card)}
+.sheetwell{background:var(--wash);border:var(--stroke) solid var(--ink);
+           border-radius:var(--r-card)}
+.grid-overlay{display:none}
+/* The crop guide, and the stacking the whole well depends on: the guide
+   dims everything outside the frame, the bracket is drawn on the picture
+   inside it, and the countdown sits over both. These were set further up
+   the old stylesheet and have to come with the look. */
+.guide{outline:var(--stroke) solid rgba(255,255,255,.85);border-radius:var(--r-ctrl);
+       box-shadow:0 0 0 4000px rgba(43,45,52,.45);z-index:4}
+.vf-track{z-index:5}
+.osd{z-index:6}
 
-/* ---------- the layout menu ----------
-   The reference's menu is a list with one row lit. These are tiles because
-   a layout is a picture and a word for it is not enough, but the lit row is
-   the same idea: the chosen one is a bright bar, not a tint. */
-body:not(.operator) .tile{background:var(--crt-panel);
-  border:var(--rule-thin) solid var(--crt-line)}
-body:not(.operator) .tile .pv{background:var(--crt-deep)}
-body:not(.operator) .tile .cap{background:transparent}
-body:not(.operator) .tile .cap .lead{border-top-color:var(--accent);opacity:.8}
-body:not(.operator) .tile.sel{background:var(--crt-panel);border-color:var(--crt-ink)}
-body:not(.operator) .tile.sel .cap{background:var(--accent)}
-body:not(.operator) .tile.sel .cap canvas{filter:none}
-body:not(.operator) .tile:active{border-color:var(--crt-ink)}
+/* ---------- the layout tiles ---------- */
+.tile{background:var(--paper);border:var(--stroke) solid var(--ink);
+      border-radius:var(--r-card);overflow:hidden}
+.tile .pv{background:var(--wash)}
+.tile::before{height:8px;background:var(--accent)}
+.tile .cap{padding:12px 14px;background:transparent;gap:10px}
+.tile .cap .lead{border-top:var(--stroke) dotted var(--hair);opacity:1}
+.tile.sel{background:var(--ink)}
+.tile.sel .pv{background:#2A2D34}
+.tile.sel .cap{background:transparent;color:var(--paper)}
+.tile.sel .cap canvas{filter:none}
+.tile.sel .cap .lead{border-top-color:rgba(255,255,255,.45)}
+.tile.sel .px{color:var(--paper)}
 
-/* ---------- the film strip ----------
-   The row of frames along the bottom of the second reference. Sprocket
-   holes top and bottom, one cell per shot, lit as they are taken. */
-body:not(.operator) .shotstrip{border:var(--rule-thin) solid var(--crt-line);
-  background:var(--crt-deep);position:relative;height:52px}
-body:not(.operator) .shotstrip::before,
-body:not(.operator) .shotstrip::after{content:'';position:absolute;left:0;right:0;
-  height:7px;background:repeating-linear-gradient(to right,
-    var(--crt-line) 0 5px, transparent 5px 14px);opacity:.55;pointer-events:none}
-body:not(.operator) .shotstrip::before{top:2px}
-body:not(.operator) .shotstrip::after{bottom:2px}
-body:not(.operator) .shotstrip i{background:var(--crt-deep);
-  border-right:var(--rule-thin) solid #2B4066;margin:10px 0}
-body:not(.operator) .shotstrip i:last-child{border-right:0}
-body:not(.operator) .shotstrip i.done{background:var(--lavender)}
-body:not(.operator) .shotstrip i.live{background:repeating-linear-gradient(45deg,
-  var(--lavender) 0 7px, var(--crt-deep) 7px 14px)}
+/* ---------- the proof strip ---------- */
+.thumbrow{border:var(--stroke) solid var(--ink);border-radius:var(--r-card);
+          overflow:hidden;background:var(--paper)}
+.thumbrow .t{background:var(--paper);border-right:var(--stroke) dotted var(--hair)}
+.thumbrow .t:last-child{border-right:0}
+.thumbrow canvas.shot{border-radius:0}
+.thumbrow .t.marked{background:var(--ink);color:var(--paper)}
+.thumbrow .t.marked .px{color:var(--paper)}
 
-body:not(.operator) .thumbrow{border-color:var(--crt-line)}
-/* The cells carry paper white from the panel skin. Left alone, each shot's
-   number is black type inverted to white on a white cell — invisible, which
-   is the whole label for the thing a guest taps to redo. */
-body:not(.operator) .thumbrow .t{background:var(--crt-deep);border-right-color:#2B4066}
-body:not(.operator) .thumbrow .t.marked{background:var(--salmon)}
+/* ---------- the shot strip, as the kit's progress bar ---------- */
+.shotstrip{height:22px;border:var(--stroke) solid var(--ink);
+           border-radius:var(--r-pill);overflow:hidden;background:var(--paper);gap:0}
+.shotstrip i{background:var(--paper);border-right:var(--stroke) dotted var(--hair)}
+.shotstrip i:last-child{border-right:0}
+.shotstrip i.done{background:var(--ink)}
+.shotstrip i.live{background:repeating-linear-gradient(45deg,
+  var(--ink) 0 6px, var(--paper) 6px 12px)}
+
+/* ---------- counters and steppers ---------- */
+.bigbox{width:190px;height:120px;border:var(--stroke) solid var(--ink);
+        border-radius:var(--r-card);background:var(--paper);
+        display:grid;place-items:center}
+.bigbox::after{content:none}
+.stepper{gap:22px}
+
+/* ---------- rows of settings ---------- */
+.spec .lead,.arow{border-color:var(--hair)}
+.spec .lead{border-top:var(--stroke) dotted var(--hair)}
+.spec .v{padding:7px 14px;border:var(--stroke) solid var(--ink);
+         border-radius:var(--r-pill);background:var(--paper)}
+.arow{border-bottom:var(--stroke) dotted var(--hair);padding-bottom:14px}
+.arow>label{font-family:var(--ui);font-weight:800;font-size:12px;letter-spacing:.06em;
+            color:var(--dim)}
+/* A segmented control is one pill with a dark half, exactly as the sheet
+   draws its on/off pair. */
+.seg{border:var(--stroke) solid var(--ink);border-radius:var(--r-pill);overflow:hidden}
+.seg button{min-height:46px;padding:0 18px;border:0;background:var(--paper);
+            font-family:var(--ui);font-weight:800;font-size:13px;letter-spacing:.02em;
+            color:var(--ink)}
+.seg button+button{border-left:var(--stroke) solid var(--ink)}
+.seg button.on{background:var(--ink);color:var(--paper)}
+.seg.wrap{border-radius:var(--r-card);grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.seg.wrap button,.seg.wrap button:last-child{border-right:var(--stroke) solid var(--ink);
+            border-bottom:var(--stroke) solid var(--ink);border-left:0}
+.afield{height:52px;padding:0 16px;border:var(--stroke) solid var(--ink);
+        border-radius:var(--r-pill);background:var(--paper);
+        font-family:var(--ui);font-weight:600;font-size:15px;color:var(--ink)}
+.afield:focus{outline:var(--stroke) solid var(--dim);outline-offset:2px}
+.num{border:var(--stroke) solid var(--ink);border-radius:var(--r-pill);overflow:hidden}
+.num button{width:54px;height:48px;background:var(--paper);font-family:var(--ui);
+            font-weight:800;color:var(--ink)}
+.num button:active{background:var(--ink);color:var(--paper)}
+.num .v{height:48px;font-family:var(--ui);font-weight:800;
+        border-left:var(--stroke) solid var(--ink);border-right:var(--stroke) solid var(--ink)}
+.note{font-family:var(--ui);font-weight:600;font-size:13px;line-height:1.65;color:var(--dim)}
+.swatch{width:10px;border-radius:var(--r-pill);align-self:stretch;background:var(--ink)}
+.swatch.warn-c,.swatch.info-c{background:var(--ink)}
+.chip{width:14px;height:14px;border-radius:var(--r-pill);background:var(--ink)}
+.chip.lav,.chip.sal,.chip.sag,.chip.sla{background:var(--ink)}
+.warn{gap:10px}
 
 /* ---------- dialogs ---------- */
-body:not(.operator) .scrim{background:rgba(5,9,18,.78)}
-body:not(.operator) .mod.dialog{background:var(--crt-panel)}
+.scrim{background:rgba(59,64,75,.42)}
+.mod.dialog{border-radius:22px}
 
-body:not(.operator) .mono{color:var(--crt-dim)}
-body:not(.operator) .mono.dim{color:#6F85A6}
+/* ---------- the digital copy's code ---------- */
+.qrwell{flex:0 0 auto;background:var(--paper);border:var(--stroke) solid var(--ink);
+        border-radius:var(--r-ctrl);padding:10px;line-height:0}
+.qrwell canvas{display:block;width:188px;height:188px;
+  image-rendering:pixelated;image-rendering:crisp-edges}
+@media (max-width:760px){ .qrwell canvas{width:146px;height:146px} }
 
-/* ---------- the glass ----------
-   Over the whole machine, not only the camera well. */
-.crt-glass{position:absolute;inset:0;z-index:60;pointer-events:none;overflow:hidden;
-  display:none}
-body:not(.operator) .crt-glass{display:block}
-.crt-glass::before{content:'';position:absolute;inset:0;
-  background:repeating-linear-gradient(to bottom,
-    rgba(0,0,0,.20) 0 1px, transparent 1px 3px)}
-.crt-glass::after{content:'';position:absolute;inset:0;
-  background:radial-gradient(135% 120% at 50% 50%, transparent 58%, rgba(0,0,0,.55) 100%)}
-/* The bar that rolled slowly up a tube that was not quite in sync. Twelve
-   seconds, barely visible: a fast or obvious one is a novelty filter, and
-   nobody can read a screen through it. */
-.crt-glass i{position:absolute;left:0;right:0;height:22%;
-  background:linear-gradient(to bottom, transparent,
-    rgba(255,255,255,.045) 45%, rgba(255,255,255,.07) 55%, transparent);
-  animation:crt-roll 12s linear infinite}
-@keyframes crt-roll{from{top:-25%}to{top:105%}}
-@media (prefers-reduced-motion:reduce){ .crt-glass i{display:none} }
+/* ---------- the subject bracket ----------
+ * The one thing drawn on the picture rather than beside it, so it is drawn
+ * in the kit's own outline: white, rounded, no corner ticks and no colour.
+ * It has to read against whatever a guest is wearing, which is why it keeps
+ * a dark halo rather than taking a fill. */
+.vf-track{position:absolute;z-index:5;pointer-events:none;opacity:0;
+  border:var(--stroke) solid rgba(255,255,255,.95);border-radius:var(--r-ctrl);
+  box-shadow:0 0 0 1px rgba(43,45,52,.55), 0 0 12px rgba(43,45,52,.35);
+  transition:left .12s linear, top .12s linear, width .12s linear,
+             height .12s linear, opacity .25s}
+.vf-track.on{opacity:1}
+.vf-track u{display:none}
+.vf-track b{position:absolute;top:100%;left:0;margin-top:7px;
+  font-family:var(--ui);font-weight:800;font-size:11px;letter-spacing:.1em;
+  color:var(--ink);background:var(--paper);padding:3px 9px;
+  border-radius:var(--r-pill);border:2px solid var(--ink);white-space:nowrap}
+/* Must carry `.on`. Without it this rule outranks the base `opacity:0` —
+   later in the file, same weight — and a bracket that found nothing sits on
+   screen at 55% with its label showing in the corner. */
+.vf-track.on:not(.lock){opacity:.55}
 
-/* The tube overlay inside the camera well is now doubled by the glass over
-   the whole app, so its own scan lines come off — two sets at different
-   pitches is moiré, not a tube. */
-body:not(.operator) .vhs::before{display:none}
+/* ---------- the countdown, floating on the picture ---------- */
+/* Clear of the bar above and the strip below. Both of those float now, so
+   the countdown has to be told where they are. */
+.cd-badge{top:auto;bottom:134px;right:50%;transform:translateX(50%);
+  flex-direction:row;align-items:center;gap:14px;padding:10px 22px;
+  background:var(--paper);border:var(--stroke) solid var(--ink);
+  border-radius:var(--r-pill)}
+.cd-foot{left:50%;transform:translateX(-50%);right:auto;bottom:auto;top:84px;
+  width:max-content;max-width:86%;padding:9px 20px;background:var(--paper);
+  border:var(--stroke) solid var(--ink);border-radius:var(--r-pill)}
+.cd-foot .bars{width:140px;flex:none}
+.bars{border:var(--stroke) solid var(--ink);border-radius:var(--r-pill);
+      padding:3px;gap:3px;height:22px;background:var(--paper)}
+.bars i{border-radius:var(--r-pill)}
+.bars i.on{background:var(--ink)}
 
-/* A phone has no room for the card edges beside the tabs, and without
-   dropping them the two tabs on the start screen meet in the middle and the
-   left one is cut by the right one. */
-@media (max-width:700px){
-  body:not(.operator) .mod-top .ln.s{display:none}
-  body:not(.operator) .mod-top b{padding:2px 16px 2px 7px}
-  body:not(.operator) .mod-top{gap:6px}
-}
+.cam-msg{background:var(--paper);color:var(--ink);border-radius:var(--r-card);
+  inset:18px;font-family:var(--ui);font-weight:700;font-size:clamp(14px,2vw,19px);
+  letter-spacing:0;line-height:1.7;text-transform:none;text-shadow:none;
+  border:var(--stroke) solid var(--ink)}
+
+.attract-fallback .px{color:var(--paper)}
+.attract-fallback .px.dim{color:#AFB3BB}
+.attract-go{border-radius:var(--r-pill)}
+.attract-copy .px{color:var(--paper)}
+.attract-sep{border-radius:var(--r-pill)}
+
+/* ==================================================================== *
+ * The picture is the screen
+ *
+ * On the two screens with a live camera on them, the preview is the whole
+ * app and everything else floats on top of it: the bar, the shot strip, the
+ * countdown. Nothing is framed, nothing is padded, nothing takes a share.
+ *
+ * It is also the honest arrangement. A guest standing in front of a booth
+ * is looking at themselves, and every pixel of chrome around that picture
+ * is a pixel of themselves they cannot see.
+ * ==================================================================== */
+body.fullbleed .hdr,
+body.fullbleed .ftr{position:absolute;left:0;right:0;z-index:40;
+  background:transparent;border:0;pointer-events:none}
+body.fullbleed .hdr{top:0}
+body.fullbleed .ftr{bottom:0}
+body.fullbleed .hdr>*,
+body.fullbleed .ftr>*{pointer-events:auto}
+/* The readouts need to hold up over a moving picture, so they keep their
+   pill but gain the ink behind them. */
+body.fullbleed .hdr-val{background:var(--ink);color:var(--paper)}
+body.fullbleed .hdr .px,
+body.fullbleed .hdr-clock,
+body.fullbleed .ftr .px,
+body.fullbleed .ftr-date{color:var(--paper);text-shadow:0 1px 5px rgba(0,0,0,.65)}
+body.fullbleed .ftr-date{background:transparent;border-color:transparent}
+body.fullbleed .lead{display:none}
+body.fullbleed .meter{background:rgba(255,255,255,.8)}
+
+[data-screen="attract"] .pad,
+[data-screen="capture"] .pad{padding:0;gap:0}
+[data-screen="attract"] .mod,
+[data-screen="capture"] .mod{border:0;background:transparent;border-radius:0}
+[data-screen="attract"] .mod-top,
+[data-screen="capture"] .mod-top{display:none}
+[data-screen="attract"] .mod-in,
+[data-screen="capture"] .mod-in{padding:0;gap:0}
+[data-screen="attract"] .screenwell,
+[data-screen="capture"] .screenwell{border:0;border-radius:0}
+/* The strip floats clear of the foot instead of sitting under the picture. */
+[data-screen="capture"] .shotstrip{position:absolute;left:50%;bottom:88px;
+  transform:translateX(-50%);width:min(420px,72%);z-index:30;
+  background:rgba(255,255,255,.9)}

@@ -174,21 +174,52 @@ function pixelTextCanvas(text, cell, colour){
   return c;
 }
 
-/* Replaces the text of a .px element with its bitmap rendering. The source
- * string is kept in the dataset so the element can be re-set later. */
+/* ==================================================================== *
+ * UI type
+ *
+ * `.px` elements used to be 5x7 bitmap glyphs drawn into a canvas. They are
+ * set in a real rounded face now — the kit this app is drawn from is soft
+ * and round, and a pixel grid is the opposite of that.
+ *
+ * `pixelTextCanvas` and the GLYPHS table above are kept and still work; the
+ * printed sheets never used them (those set their own faces on the sheet
+ * canvas), so nothing on paper changes by a hair.
+ *
+ * The win is not only the look. A canvas carried its size as an *inline*
+ * style, which no stylesheet rule could outrank — a trap that cost a title
+ * bar and a pair of tabs in earlier passes. Text carries its colour in
+ * `color` and its size in one place, so both are finally sayable.
+ *
+ * `cell` is kept as the unit every caller already speaks: one cell was a
+ * bitmap pixel, seven of them a cap height. 5.6px a cell lands the common
+ * sizes where they were.
+ * ==================================================================== */
+function uiScale(){
+  const w = window.innerWidth;
+  return w < 560 ? 0.72 : w < 760 ? 0.86 : 1;
+}
+
 function setPixel(node, text, cell){
   if (text !== undefined) node.dataset.text = text;
   const source = node.dataset.text !== undefined ? node.dataset.text : node.textContent;
   node.dataset.text = source;
-  node.textContent = '';
-  node.appendChild(pixelTextCanvas(source, cell || +(node.dataset.cell || 4)));
+  const c = cell || +(node.dataset.cell || 4);
+  if (cell) node.dataset.cell = c;
+  node.textContent = source;
+  node.style.fontSize = Math.max(10, Math.round(c * 5.6 * uiScale())) + 'px';
 }
 
 function paintPixelText(root){
   (root || document).querySelectorAll('.px').forEach(node => {
-    if (node.dataset.text !== undefined && node.firstElementChild) return;
+    if (node.dataset.text !== undefined && node.textContent) return;
     setPixel(node);
   });
+}
+
+/* Every label, re-set for the width now available. One pass, because the
+ * size lives in one expression. */
+function refitType(){
+  document.querySelectorAll('.px').forEach(node => setPixel(node));
 }
 
 /* ==================================================================== *
@@ -2645,27 +2676,12 @@ const el = sel => document.querySelector(sel);
  * Mirrors `Panel.Size.compact` in the Swift build, same 700px line. */
 function compactStage(){ return window.innerWidth < 700; }
 
-/* The app name in the menu bar, sized for the bar it is in.
- *
- * It has to be done here rather than in CSS: pixelTextCanvas sets the
- * canvas width and height as inline styles, and no stylesheet rule can
- * outrank those. A phone gets a smaller wordmark so the step counter beside
- * it keeps its own room. */
-function fitMenuBar(){
-  const w = window.innerWidth;
-  const title = document.getElementById('hdr-title');
-  if (title) setPixel(title, undefined, w < 560 ? 3 : w < 760 ? 4 : 6);
-
-  /* The start screen's two tabs, for the same reason and with the same
-   * constraint. A pixel canvas cannot be scaled down by CSS — its width and
-   * height are inline — so a tab that will not fit has to be *drawn*
-   * smaller, or its last letter disappears under the next tab's cut corner. */
-  const tab = document.querySelector('[data-screen="attract"] .mod-top b');
-  if (tab) setPixel(tab, undefined, w < 560 ? 2 : 4);
-  const count = document.getElementById('attract-layouts');
-  if (count) setPixel(count, undefined, w < 560 ? 2 : 3);
-}
-window.addEventListener('resize', fitMenuBar);
+/* Kept under its old name because the boot sequence and the export list
+ * call it. Everything it used to do by hand — shrinking the wordmark, then
+ * the start screen's tabs, each with its own breakpoint — is one scale
+ * factor now, applied to every label at once. */
+function fitMenuBar(){ refitType(); }
+window.addEventListener('resize', refitType);
 const screens = {};
 document.querySelectorAll('.screen').forEach(s => screens[s.dataset.screen] = s);
 
@@ -2701,14 +2717,9 @@ function go(step){
   // The back arrow is the ✕ of this language: present only inside a session.
   el('#hdr-back').hidden = (step === 'attract');
   if (step === 'capture') updateShotCount();
-  /* Two skins, one app.
-   *
-   * The guest side is a CRT terminal; the operator's console and the layout
-   * editor stay the white panel they always were. That is not indecision —
-   * it is the clearest signal in the whole app that you have left the thing
-   * a guest touches and are standing in the back of it. Settings pages want
-   * to be legible under a cafe's lights with a thumb on them; a booth wants
-   * to look like a machine. */
+  /* The two screens with a live camera on them give the picture the whole
+   * app and float everything else on top of it. */
+  document.body.classList.toggle('fullbleed', step === 'attract' || step === 'capture');
   document.body.classList.toggle('operator', step === 'admin' || step === 'editor');
   trackScreen(step);
   // The attract screen is a mirror now, so it needs the camera as much as the
@@ -5126,6 +5137,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 layoutToCanvas, registerCustom, registerCanvasLayout, renderCanvas,
                 canvasPixels, sheetPixels, fitsPaper,
                 pixelTextCanvas, setPixel, compactStage, isStandalone, fitMenuBar,
+                refitType, uiScale,
                 // Camera and print plumbing, exported so a test can reach it:
                 // the iPad route through these cannot be exercised by hand
                 // from this machine.
