@@ -690,6 +690,35 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
  * ==================================================================== */
 @media (orientation: portrait) and (min-width: 701px){
   .pad.row{flex-direction:column}
+  /* The thumbnails take what is left under the sheet, not what their own
+     aspect ratio asks for.
+     Uncapped, four of them grow to a quarter of the window each, the module
+     grows with them, and RETAKE ALL and LOOKS GOOD end up underneath it —
+     measured as 38px of overlap on an 810x844 window, which is a guest who
+     cannot press either of the only two buttons on the screen. It predates
+     this redesign; it turned up because the overlap was measured rather
+     than looked at.
+     The size comes from the space, not from a viewport fraction: the strip
+     is told to shrink, and the pictures shrink inside it. A vh number looks
+     like a fix and only moves which window it breaks in. */
+  /* Scoped to the review screen on purpose. The confirm screen's panel holds
+     a spec list, and clipping that hides a line a guest is being asked to
+     approve — the first version of this guard cut the last row off. */
+  [data-screen="review"] .pad.row > .col > .mod{min-height:0}
+  [data-screen="review"] .pad.row > .col > .mod > .mod-in{min-height:0;overflow:hidden}
+  #review-thumbs{flex:1 1 auto;min-height:0}
+  /* The spec list is five rows and must not be squeezed. A `.mod` is a flex
+     column with min-height:0, so a short stage compresses it and its last
+     row spills across its own bottom border — on this screen that row is
+     COPIES, which is the number a guest is about to pay for. */
+  [data-screen="confirm"] #confirm-spec-mod{flex:none}
+  .thumbrow .t{min-height:0;justify-content:center}
+  /* A floor as well as a ceiling. Told only to shrink, a canvas with an
+     aspect ratio shrinks to nothing: the first version of this fixed the
+     overlap and left four 12px thumbnails, which is a worse screen than the
+     one it fixed. */
+  .thumbrow canvas.shot{flex:0 1 auto;min-height:64px;
+    height:auto;width:auto;max-height:min(100%,120px);max-width:100%;margin:0 auto}
   .sheetcol{flex:0 0 auto;height:46vh;min-height:0;align-self:stretch;width:auto}
   /* With the print options hidden there is nothing under the sheet but two
      buttons, so it can have most of the stage. */
@@ -705,6 +734,22 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
                            grid-auto-rows:min-content;align-content:center}
   .app.rollmedia .tile .pv{flex:none;width:100%;height:auto;max-width:100%;
                            margin:8px auto}
+}
+
+/* A portrait window that is not actually tall: a nearly square one, or a
+   small tablet. 46vh was chosen for a 4:3 tablet stood upright, and here it
+   leaves too little underneath for the proof, the strip and the two buttons
+   together. */
+@media (orientation: portrait) and (min-width: 701px) and (max-height: 900px){
+  /* The picture takes what is left, instead of a fixed share of the window.
+     46vh was chosen for a 4:3 tablet stood upright; on a shorter portrait
+     window it is more than the stage can spare, and whatever is underneath
+     — the proof strip, a five row spec, the two buttons — is squeezed until
+     something spills over its own border or under the footer. Here the
+     controls are sized by their contents and the sheet absorbs the rest,
+     which is the only version of this that cannot be wrong by a number. */
+  .pad.row > .sheetcol{flex:1 1 auto;height:auto;min-height:140px}
+  .pad.row > .col.fill{flex:0 0 auto}
 }
 
 /* ==================================================================== *
@@ -973,3 +1018,206 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .cam-msg{background:#101010;color:#FFFFFF;font-size:clamp(15px,2.6vw,26px);
   font-weight:700;letter-spacing:.2em;line-height:1.9;text-transform:uppercase;
   text-shadow:0 0 10px rgba(255,255,255,.35)}
+
+/* ==================================================================== *
+ * THE TERMINAL — the guest side of SnapBox
+ *
+ * Drawn from the references: a tube UI of nested panels, folder-tab titles
+ * carrying a path, a bright selection bar, dithered type on navy, a status
+ * line along the bottom, and scan lines over all of it. The camcorder's
+ * burned-in readouts live on the picture inside it.
+ *
+ * SCOPE: `body:not(.operator)`. The operator's console and the layout
+ * editor keep the white module-panel look untouched — that contrast is the
+ * point, and it is the clearest signal in the app that you have stopped
+ * being a guest. Nothing in this block may be written without that guard.
+ *
+ * COLOUR: the four SnapBox accents are unchanged and still do all the
+ * signalling. What is new is only the ground they sit on and the ink that
+ * reads against it, because a tube is not white paper.
+ * ==================================================================== */
+:root{
+  --crt-bg:#0C1524;        /* the tube's black, with blue in it */
+  --crt-panel:#152541;     /* a window's ground */
+  --crt-deep:#0A1120;      /* a well, or anything recessed */
+  --crt-line:#4C79B8;      /* the blue rule every panel is drawn with */
+  --crt-ink:#EAF1FF;
+  --crt-dim:#8FA6C6;
+}
+
+body:not(.operator) .app{background:var(--crt-bg);border-color:var(--crt-line)}
+body:not(.operator) .stage{background:var(--crt-bg)}
+
+/* Pixel type is drawn black into a canvas and cannot be recoloured from
+   here — pixelTextCanvas bakes the fill. Inverting the canvas is how the
+   rest of this app has always put that type on a dark ground. */
+body:not(.operator) .px canvas{filter:invert(1)}
+body:not(.operator) .dim canvas{opacity:.55}
+
+/* ---------- the status lines ---------- */
+body:not(.operator) .hdr{background:var(--crt-panel);
+  border-bottom:var(--rule-thin) solid var(--crt-line)}
+body:not(.operator) .menus{display:none}
+body:not(.operator) .hdr-clock,
+body:not(.operator) .ftr-ver,
+body:not(.operator) .ftr-date{color:var(--crt-dim);border-color:#2B4066}
+body:not(.operator) .hatch{border-top-color:#2B4066}
+body:not(.operator) .mark{background:var(--crt-ink);border-color:var(--crt-ink)}
+body:not(.operator) .mark canvas{filter:none}
+body:not(.operator) .hdr-back{background:var(--crt-panel);border-color:var(--crt-line)}
+body:not(.operator) .hdr-back:active{background:var(--crt-ink)}
+body:not(.operator) .hdr-back:active canvas{filter:none}
+
+.ftr-ver,.ftr-date{font-family:var(--mono);font-size:13px;font-weight:700;
+  letter-spacing:.08em;font-variant-numeric:tabular-nums;color:var(--dim);flex:none}
+.ftr-date{padding-right:4px}
+@media (max-width:620px){ .ftr-ver,.ftr-date{display:none} }
+
+body:not(.operator) .ftr{background:var(--crt-panel);
+  border-top:var(--rule-thin) solid var(--crt-line)}
+body:not(.operator) .lead{border-top-color:#2B4066}
+body:not(.operator) .meter{border-color:var(--crt-line)}
+body:not(.operator) .meter i{background:var(--sage)}
+
+/* ---------- panels ----------
+   A window here is a card with a tab, not a Mac title bar: the reference's
+   panels carry a path on a folder tab and a stack of card edges beside it. */
+body:not(.operator) .mod{background:var(--crt-panel);
+  border:var(--rule-thin) solid var(--crt-line);border-top:0;
+  box-shadow:6px 6px 0 rgba(0,0,0,.55)}
+body:not(.operator) .mod.alarm{border-color:var(--salmon)}
+
+body:not(.operator) .mod-top{background:transparent;border:0;padding:0;
+  margin:0 calc(var(--rule-thin) * -1);gap:0;align-items:flex-end}
+/* The tab. A plate of ink with a cut corner, the title dark inside it. */
+body:not(.operator) .mod-top b{background:var(--crt-ink);padding:3px 16px 3px 10px;
+  clip-path:polygon(0 0, calc(100% - 11px) 0, 100% 100%, 0 100%);
+  border-bottom:0}
+body:not(.operator) .mod-top b canvas{filter:none}
+/* The path mark before the title, exactly the reference's `/main_menu`. */
+body:not(.operator) .mod-top b::before{content:'/';font-family:var(--mono);
+  font-weight:700;font-size:14px;color:#2A3A55;margin-right:5px}
+/* The rule becomes the tab's shoulder: a thin line at the bottom of the
+   strip, so the tab reads as sitting on the panel rather than floating. */
+body:not(.operator) .mod-top .ln{height:0;background-image:none;
+  border-top:var(--rule-thin) solid var(--crt-line);align-self:flex-end;
+  margin-bottom:0}
+/* The stubs become the stacked card edges beside the tab. */
+body:not(.operator) .mod-top .ln.s{flex:0 0 16px;height:13px;border:0;
+  background-color:transparent;background-image:repeating-linear-gradient(to right,
+    var(--crt-line) 0 2px, transparent 2px 5px);align-self:flex-end}
+body:not(.operator) .mod-top .ln.s:last-child{background-image:
+  repeating-linear-gradient(to right, var(--crt-line) 0 2px, transparent 2px 5px)}
+
+body:not(.operator) .hr{border-top-color:#2B4066}
+body:not(.operator) .banner .lead{border-top-color:#2B4066}
+
+/* ---------- controls ---------- */
+body:not(.operator) .btn{background:var(--crt-panel);
+  border:var(--rule-thin) solid var(--crt-line);color:var(--crt-ink)}
+body:not(.operator) .btn canvas{filter:invert(1)}
+body:not(.operator) .btn:active{background:var(--crt-ink)}
+body:not(.operator) .btn:active canvas{filter:none}
+/* The primary action is the reference's selection bar: a solid bright
+   stripe with the label knocked out of it. */
+body:not(.operator) .btn.solid{background:var(--lavender);border-color:var(--crt-ink)}
+body:not(.operator) .btn.solid canvas{filter:none}
+body:not(.operator) .btn.solid:active{background:var(--crt-ink)}
+body:not(.operator) .btn.tint-salmon{background:var(--salmon);border-color:var(--crt-ink)}
+body:not(.operator) .btn.tint-salmon canvas{filter:none}
+body:not(.operator) .btn.tint-sage{background:var(--sage);border-color:var(--crt-ink)}
+body:not(.operator) .btn.tint-sage canvas{filter:none}
+body:not(.operator) .btn:disabled{background:repeating-linear-gradient(45deg,
+  var(--crt-deep) 0 6px, var(--crt-panel) 6px 12px);border-color:#2B4066}
+body:not(.operator) .btn.sqr{border-color:var(--crt-line)}
+
+body:not(.operator) .bigbox{background:var(--crt-deep);
+  border:var(--rule-thin) solid var(--crt-line)}
+body:not(.operator) .bigbox::after{background:var(--lavender)}
+
+body:not(.operator) .spec .lead{border-top-color:#2B4066}
+body:not(.operator) .spec .v{border-color:var(--crt-line);background:var(--crt-deep)}
+
+/* ---------- wells ---------- */
+body:not(.operator) .screenwell{background:var(--crt-deep);border-color:var(--crt-line)}
+body:not(.operator) .sheetwell{background:var(--crt-deep);border-color:var(--crt-line)}
+
+/* ---------- the layout menu ----------
+   The reference's menu is a list with one row lit. These are tiles because
+   a layout is a picture and a word for it is not enough, but the lit row is
+   the same idea: the chosen one is a bright bar, not a tint. */
+body:not(.operator) .tile{background:var(--crt-panel);
+  border:var(--rule-thin) solid var(--crt-line)}
+body:not(.operator) .tile .pv{background:var(--crt-deep)}
+body:not(.operator) .tile .cap{background:transparent}
+body:not(.operator) .tile .cap .lead{border-top-color:var(--accent);opacity:.8}
+body:not(.operator) .tile.sel{background:var(--crt-panel);border-color:var(--crt-ink)}
+body:not(.operator) .tile.sel .cap{background:var(--accent)}
+body:not(.operator) .tile.sel .cap canvas{filter:none}
+body:not(.operator) .tile:active{border-color:var(--crt-ink)}
+
+/* ---------- the film strip ----------
+   The row of frames along the bottom of the second reference. Sprocket
+   holes top and bottom, one cell per shot, lit as they are taken. */
+body:not(.operator) .shotstrip{border:var(--rule-thin) solid var(--crt-line);
+  background:var(--crt-deep);position:relative;height:52px}
+body:not(.operator) .shotstrip::before,
+body:not(.operator) .shotstrip::after{content:'';position:absolute;left:0;right:0;
+  height:7px;background:repeating-linear-gradient(to right,
+    var(--crt-line) 0 5px, transparent 5px 14px);opacity:.55;pointer-events:none}
+body:not(.operator) .shotstrip::before{top:2px}
+body:not(.operator) .shotstrip::after{bottom:2px}
+body:not(.operator) .shotstrip i{background:var(--crt-deep);
+  border-right:var(--rule-thin) solid #2B4066;margin:10px 0}
+body:not(.operator) .shotstrip i:last-child{border-right:0}
+body:not(.operator) .shotstrip i.done{background:var(--lavender)}
+body:not(.operator) .shotstrip i.live{background:repeating-linear-gradient(45deg,
+  var(--lavender) 0 7px, var(--crt-deep) 7px 14px)}
+
+body:not(.operator) .thumbrow{border-color:var(--crt-line)}
+/* The cells carry paper white from the panel skin. Left alone, each shot's
+   number is black type inverted to white on a white cell — invisible, which
+   is the whole label for the thing a guest taps to redo. */
+body:not(.operator) .thumbrow .t{background:var(--crt-deep);border-right-color:#2B4066}
+body:not(.operator) .thumbrow .t.marked{background:var(--salmon)}
+
+/* ---------- dialogs ---------- */
+body:not(.operator) .scrim{background:rgba(5,9,18,.78)}
+body:not(.operator) .mod.dialog{background:var(--crt-panel)}
+
+body:not(.operator) .mono{color:var(--crt-dim)}
+body:not(.operator) .mono.dim{color:#6F85A6}
+
+/* ---------- the glass ----------
+   Over the whole machine, not only the camera well. */
+.crt-glass{position:absolute;inset:0;z-index:60;pointer-events:none;overflow:hidden;
+  display:none}
+body:not(.operator) .crt-glass{display:block}
+.crt-glass::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(to bottom,
+    rgba(0,0,0,.20) 0 1px, transparent 1px 3px)}
+.crt-glass::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(135% 120% at 50% 50%, transparent 58%, rgba(0,0,0,.55) 100%)}
+/* The bar that rolled slowly up a tube that was not quite in sync. Twelve
+   seconds, barely visible: a fast or obvious one is a novelty filter, and
+   nobody can read a screen through it. */
+.crt-glass i{position:absolute;left:0;right:0;height:22%;
+  background:linear-gradient(to bottom, transparent,
+    rgba(255,255,255,.045) 45%, rgba(255,255,255,.07) 55%, transparent);
+  animation:crt-roll 12s linear infinite}
+@keyframes crt-roll{from{top:-25%}to{top:105%}}
+@media (prefers-reduced-motion:reduce){ .crt-glass i{display:none} }
+
+/* The tube overlay inside the camera well is now doubled by the glass over
+   the whole app, so its own scan lines come off — two sets at different
+   pitches is moiré, not a tube. */
+body:not(.operator) .vhs::before{display:none}
+
+/* A phone has no room for the card edges beside the tabs, and without
+   dropping them the two tabs on the start screen meet in the middle and the
+   left one is cut by the right one. */
+@media (max-width:700px){
+  body:not(.operator) .mod-top .ln.s{display:none}
+  body:not(.operator) .mod-top b{padding:2px 16px 2px 7px}
+  body:not(.operator) .mod-top{gap:6px}
+}
