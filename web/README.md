@@ -790,6 +790,87 @@ bar is drawn from it instead — the same body, lens and flash, as a solid
 bitmap glyph in the icon table — and should be swapped for a real file when
 one arrives.
 
+## The kit
+
+Oct 3 2026. He sent a component sheet and a camera-app mockup and asked for
+the whole system to look like them, function unchanged.
+
+**The three earlier passes are gone from the code, not layered under this
+one.** The silkscreen panel, the Mac desktop and the CRT terminal are deleted
+— about 390 lines of stylesheet. A stylesheet carrying four looks is one
+where nobody can tell which rule is live, and three of them had already
+proved that by fighting each other.
+
+The sections below this one describe those passes. They are kept as a record
+of what was tried and what it cost; none of them is the live design.
+
+### Three shapes
+
+One dark outline weight (`#3B404B`, 3px), white fills, generous radii, a grey
+ground, and nothing else. No shadows, no gradients, no second stroke.
+
+* **pill** — anything you press
+* **card** — anything that holds something
+* **well** — anything that shows a picture
+
+Colour is gone except where colour is information: the accent stripe that
+tells six layout tiles apart. A destructive action is an outlined pill
+against a filled one rather than a red one, which is what the sheet does.
+
+### The type is real type now
+
+`.px` elements were 5x7 bitmap glyphs drawn into a canvas. They are set in a
+rounded system face instead — the kit is soft and round, and a pixel grid is
+the opposite of that.
+
+**Nothing on paper changed by a hair.** The bitmap font was only ever the
+UI's; printed sheets set their own faces on the sheet canvas. `GLYPHS` and
+`pixelTextCanvas` are still in the file and still work.
+
+The look is not the only gain. A canvas carried its size as an **inline**
+style that no rule in the stylesheet could outrank — a trap that cost a title
+bar in one pass and a pair of tabs in the next, and that needed a JS shim
+each time. Text carries its colour in `color` and its size in one expression,
+so `refitType()` replaced both shims and every label now scales from one
+number.
+
+`cell` is kept as the unit every caller already speaks: 5.6px a cell lands
+the common sizes within a pixel or two of where they were.
+
+### The picture is the screen
+
+On the two screens with a live camera, the preview is the whole app and
+everything else floats on it: the bar, the shot strip, the countdown. Nothing
+is framed, padded or given a share.
+
+It is also the honest arrangement. A guest in front of a booth is looking at
+themselves, and every pixel of chrome around that picture is a pixel of
+themselves they cannot see.
+
+The floating pieces have to be told where each other are, since none of them
+is in flow any more. Measured at 810x844: bar ends at 66, HOLD STILL starts
+at 84, the countdown runs 637–710, the strip 734–756, the foot starts at 788.
+
+### Two faults this turned up
+
+* **The bracket showed when it had found nothing.**
+  `.vf-track:not(.lock){opacity:.55}` sat *after* the base `opacity:0` at the
+  same weight and quietly won, so a tracker that had found no face still put
+  a 55% box and a SUBJECT label in the corner of the screen. It needed `.on`
+  in the selector. A rule that reads correctly in isolation and is wrong in
+  file order is the hardest kind to see.
+* **The well's stacking was carried by rules in the deleted blocks.** The
+  crop guide dims outside the frame, the bracket draws on the picture inside
+  it, and the countdown sits over both; those three z-indexes lived in the
+  tube block and went out with it. Deleting a look can delete behaviour, so
+  the stacking is now written next to the shapes that depend on it.
+
+### Still open
+
+**The logo.** The file he sent has ink in only a 408x408 corner of a
+1744x442 canvas — a hairline outline at about `#E06060`, no wordmark,
+invisible at bar size. The mark in the bar is a redraw of it.
+
 ## Two skins, one app
 
 Oct 3 2026. The guest side is a CRT terminal; **the operator's console and
