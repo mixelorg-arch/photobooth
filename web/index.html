@@ -23,14 +23,22 @@
 <div class="app">
 
   <!-- ===================== HEADER ===================== -->
+  <!-- The menu bar. The mark, the app, four menu titles that are furniture,
+       then the status and the clock where a Mac has always put them. The
+       menus do not open: a kiosk has no menus, and every control it has is a
+       button on the screen in front of you. -->
   <header class="hdr">
     <button class="hdr-back" data-act="abandon" id="hdr-back" aria-label="back">
       <span class="px" data-cell="4">&lt;</span>
     </button>
-    <span class="hatch"></span>
-    <span class="hdr-title px" data-cell="8" id="hdr-title">SNAPBOX</span>
+    <span class="mark"><span class="ic" data-icon="snapbox" data-size="26"></span></span>
+    <span class="hdr-title px" data-cell="6" id="hdr-title">SNAPBOX</span>
+    <span class="menus" aria-hidden="true">
+      <span>File</span><span>Tape</span><span>Camera</span><span>Help</span>
+    </span>
     <span class="hatch"></span>
     <span class="hdr-val px" data-cell="3" id="task-right">READY</span>
+    <span class="hdr-clock" id="hdr-clock">--:--</span>
   </header>
 
   <!-- ===================== STAGE ===================== -->
@@ -52,13 +60,14 @@
   <section class="screen" data-screen="attract">
     <div class="pad col gap14">
       <div class="mod fill">
-        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="5">SAY CHEESE</b>
+        <div class="mod-top"><i class="ln s"></i><b class="px" data-cell="4">SAY CHEESE</b>
           <i class="ln"></i><b class="px" data-cell="3" id="attract-layouts">6 LAYOUTS</b><i class="ln s"></i></div>
         <div class="mod-in tight">
           <div class="screenwell" id="attract-well">
             <video id="attract-video" playsinline muted autoplay></video>
             <img id="attract-uvc" alt="" hidden>
             <div class="grid-overlay"></div>
+            <div class="vhs" aria-hidden="true"><i></i></div>
             <!-- The tape overlay.
                  Built from the reference: white monospace in corner-anchored
                  blocks over the picture, the way a camcorder burned its state
@@ -75,11 +84,18 @@
               <div class="vf-b tr">
                 <span class="vf-l">VCR TAPE</span>
                 <span class="vf-l vf-name">SNAPBOX</span>
+                <span class="vf-l vf-sp"><em>SP</em><span class="vf-left">219min</span></span>
               </div>
               <div class="vf-b bl">
                 <span class="vf-l vf-clock">00:00</span>
                 <span class="vf-l vf-date">01.01.1997 WED</span>
               </div>
+              <i class="vf-corner tl"></i><i class="vf-corner tr"></i>
+              <i class="vf-corner bl"></i><i class="vf-corner br"></i>
+              <!-- The subject bracket. Positioned from track.js; see there
+                   for what it can and cannot see. -->
+              <div class="vf-track" id="attract-track"><u class="tl"></u><u class="tr"></u>
+                <u class="bl"></u><u class="br"></u><b>SUBJECT</b></div>
             </div>
             <!-- The call to action, over the picture and dead centre.
                  The whole stage is the mirror now, so there is nowhere else
@@ -151,6 +167,7 @@
                  frames rather than shuttling them through JavaScript. -->
             <img id="uvc" alt="" hidden>
             <div class="grid-overlay"></div>
+            <div class="vhs" aria-hidden="true"><i></i></div>
             <!-- The tape overlay.
                  Built from the reference: white monospace in corner-anchored
                  blocks over the picture, the way a camcorder burned its state
@@ -167,11 +184,18 @@
               <div class="vf-b tr">
                 <span class="vf-l">VCR TAPE</span>
                 <span class="vf-l vf-name">SNAPBOX</span>
+                <span class="vf-l vf-sp"><em>SP</em><span class="vf-left">219min</span></span>
               </div>
               <div class="vf-b bl">
                 <span class="vf-l vf-clock">00:00</span>
                 <span class="vf-l vf-date">01.01.1997 WED</span>
               </div>
+              <i class="vf-corner tl"></i><i class="vf-corner tr"></i>
+              <i class="vf-corner bl"></i><i class="vf-corner br"></i>
+              <!-- The subject bracket. Positioned from track.js; see there
+                   for what it can and cannot see. -->
+              <div class="vf-track" id="vf-track"><u class="tl"></u><u class="tr"></u>
+                <u class="bl"></u><u class="br"></u><b>SUBJECT</b></div>
             </div>
             <div class="guide" id="guide"></div>
             <!-- The countdown lives *on* the preview, not over it: a guest
@@ -385,6 +409,7 @@
 </div>
 
 <script src="qr.js"></script>
+<script src="track.js"></script>
 <script src="cloud.js"></script>
 <script src="booth.js"></script>
 <script src="editor.js"></script>

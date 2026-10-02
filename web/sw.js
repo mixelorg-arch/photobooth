@@ -7,7 +7,7 @@
  * Bump CACHE on every deploy: the old cache is deleted on activate, which is
  * what stops a home-screen icon serving last week's build forever.
  */
-const CACHE = 'photobooth-v35';
+const CACHE = 'photobooth-v36';
 
 const SHELL = [
   './',
@@ -15,6 +15,7 @@ const SHELL = [
   './booth.css',
   './booth.js',
   './qr.js',
+  './track.js',
   './cloud.js',
   './editor.js',
   './manifest.webmanifest',

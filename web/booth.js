@@ -35,6 +35,7 @@ const ICONS = {
  cd:[".....KKKKKK.....","...KKWWWWWWKK...","..KWWAAAAAAWWK..",".KWAAAAAAAAAAWK.",".KWAAAAKKAAAAWK.","KWAAAAKWWKAAAAWK","KWAAAKWWWWKAAAWK","KWAAAKWWWWKAAAWK","KWAAAAKWWKAAAAWK","KWAAAAAKKAAAAAWK",".KWAAAAAAAAAAWK.",".KWWAAAAAAAAWWK.","..KKWWWWWWWWKK..","....KKKKKKKK....","................"],
  hourglass:["................",".KKKKKKKKKKKKKK.",".KWWWWWWWWWWWWK.","..KAAAAAAAAAAK..","...KAAAAAAAAK...","....KAAAAAAK....",".....KAAAAK.....","......KAAK......",".....KWAAWK.....","....KWWAAWWK....","...KWAAAAAAWK...","..KWAAAAAAAAWK..",".KWAAAAAAAAAAWK.",".KKKKKKKKKKKKKK.","................"],
  folder:["................","..KKKKK.........",".KYYYYYKKKKKKK..",".KYYYYYYYYYYYK..",".KYYYYYYYYYYYK..",".KYWWWWWWWWWYK..",".KYWYYYYYYYWYK..",".KYWYYYYYYYWYK..",".KYWYYYYYYYWYK..",".KYWWWWWWWWWYK..",".KYYYYYYYYYYYK..",".KKKKKKKKKKKKK..","................"],
+ snapbox:["................","..KKKKKKKKKKKK..",".K............K.",".K...KKK..KK..K.",".K..K...K.KK..K.",".K.K.....K....K.",".K.K.....K....K.",".K.K.....K....K.",".K..K...K.....K.",".K...KKK......K.",".K............K.",".K............K.","..KKKKKKKKKKKK..","................","................"],
  camera:["................","......KKKK......","....KKWWWWKK....",".KKKKKKKKKKKKKK.",".KWWWKKKKKKWRWK.",".KWKKWWWWWWKKWK.",".KWKWWAAAAWWKWK.",".KWKWAAAAAAWKWK.",".KWKWAAAAAAWKWK.",".KWKWWAAAAWWKWK.",".KWKKWWWWWWKKWK.",".KWWWKKKKKKWWWK.",".KKKKKKKKKKKKKK.","................"],
  printer:["................","...KKKKKKKKKK...","...KWWWWWWWWK...","...KWKKKKKKWK...","...KWWWWWWWWK...",".KKKKKKKKKKKKKK.",".KGGGGGGGGGGGAK.",".KGGGGGGGGGGGGK.",".KKKKKKKKKKKKKK.","...KWWWWWWWWK...","...KWAAAAAAWK...","...KWWWWWWWWK...","...KKKKKKKKKK...","................"],
  warning:["................",".......KK.......","......KRRK......","......KRRK......",".....KRRRRK.....",".....KRWWRK.....","....KRRWWRRK....","....KRRWWRRK....","...KRRRWWRRRK...","...KRRRWWRRRK...","..KRRRRRRRRRRK..","..KRRRRWWRRRRK..",".KRRRRRWWRRRRRK.",".KKKKKKKKKKKKKK.","................"],
@@ -1994,6 +1995,19 @@ function tickViewfinder(){
                     p2(Math.floor(secs / 60) % 60) + ':' + p2(secs % 60));
 
   vfWrite('.vf-name', (settings.eventName || 'SNAPBOX').toUpperCase().slice(0, 16));
+
+  // The menu bar clock, where a Mac has always kept it.
+  const bar = el('#hdr-clock');
+  if (bar) bar.textContent = p2(now.getHours()) + ':' + p2(now.getMinutes());
+
+  /* Tape remaining. A real deck counted down from what was left on the
+   * cassette; this counts down from the idle reset, so the number on screen
+   * is the one thing in the overlay that is actually true — it is how long
+   * this session has before the booth lets the next guest in. */
+  const idle = settings.idleReturnSeconds || 0;
+  const used = Math.max(0, Math.floor((Date.now() - (vfStarted || Date.now())) / 1000));
+  const left = session.step === 'attract' || !idle ? 219 : Math.max(0, Math.ceil((idle - used) / 6));
+  vfWrite('.vf-left', left + 'min');
 }
 
 /// REC while the shutter sequence is running, PLAY the rest of the time.
@@ -2002,8 +2016,101 @@ function setViewfinderRecording(on){
   vfWrite('.vf-state em', on ? 'REC' : 'PLAY');
 }
 
+
+/* ==================================================================== *
+ * The subject bracket
+ *
+ * track.js finds a face in the picture; this puts the brackets on it.
+ *
+ * The one piece of real work here is the mapping. The preview is
+ * `object-fit: cover`, so what is on screen is a centre crop of the camera's
+ * frame — a 4:3 camera in a 16:9 well has a fifth of its height off the top
+ * and bottom. The tracker answers in frame coordinates. Positioning the
+ * overlay from those directly puts the box near the face and never on it,
+ * which looks like a bug in the tracker and is not.
+ * ==================================================================== */
+const TRACK_SCREENS = {
+  attract: {well: '#attract-well', box: '#attract-track',
+            src: () => uvc.running ? attractUvc : attractVideo},
+  capture: {well: '#viewport',     box: '#vf-track',
+            src: () => uvc.running ? uvcImage : video},
+};
+let trackedScreen = null, trackRAF = 0;
+
+/* Where a cover-fitted picture actually lands inside its box. */
+function coverRect(srcW, srcH, W, H){
+  const k = Math.max(W / srcW, H / srcH);
+  const w = srcW * k, h = srcH * k;
+  return {x: (W - w) / 2, y: (H - h) / 2, w, h};
+}
+
+function paintTracker(){
+  trackRAF = requestAnimationFrame(paintTracker);
+  const spec = TRACK_SCREENS[session.step];
+  if (!spec) return;
+  const box = el(spec.box), well = el(spec.well), src = spec.src();
+  if (!box || !well || !src) return;
+
+  const st = Tracker.read();
+  if (!st.found) { box.classList.remove('on'); return; }
+
+  const sw = src.videoWidth || src.naturalWidth || 0;
+  const sh = src.videoHeight || src.naturalHeight || 0;
+  const W = well.clientWidth, H = well.clientHeight;
+  if (!sw || !sh || !W || !H) return;
+
+  const r = coverRect(sw, sh, W, H);
+  // A little air around the blob: skin stops at the hairline and the chin,
+  // and a bracket drawn exactly there looks like it has missed.
+  const pad = 0.12;
+  const x = r.x + (st.x - st.w * pad) * r.w;
+  const y = r.y + (st.y - st.h * pad * 1.6) * r.h;
+  const w = st.w * (1 + pad * 2) * r.w;
+  const h = st.h * (1 + pad * 2.4) * r.h;
+
+  box.style.left   = Math.round(x) + 'px';
+  box.style.top    = Math.round(y) + 'px';
+  box.style.width  = Math.round(w) + 'px';
+  box.style.height = Math.round(h) + 'px';
+  box.classList.add('on');
+  // Locked is a claim about the picture, so it is made from the measurement
+  // rather than from the fact that a box is being drawn.
+  const lock = st.conf > 0.72;
+  box.classList.toggle('lock', lock);
+  const label = box.querySelector('b');
+  const want = Tracker.usingNative ? (lock ? 'FACE LOCK' : 'FACE')
+                                   : (lock ? 'LOCK' : 'SUBJECT');
+  if (label && label.textContent !== want) label.textContent = want;
+}
+
+/* Point the tracker at whichever preview is on screen, and let go of it
+ * everywhere else — there is no sense reading pixels behind a print
+ * dialog. */
+function trackScreen(step){
+  const spec = TRACK_SCREENS[step];
+  if (!spec) {
+    if (trackedScreen) { Tracker.stop(); trackedScreen = null; }
+    // Stop the paint loop too, not just the tracker. A booth sits on the
+    // attract screen for hours; a frame callback that wakes sixty times a
+    // second to decide it has nothing to do is a tablet's battery.
+    if (trackRAF) { cancelAnimationFrame(trackRAF); trackRAF = 0; }
+    document.querySelectorAll('.vf-track').forEach(n => n.classList.remove('on'));
+    return;
+  }
+  if (trackedScreen === step) return;
+  trackedScreen = step;
+  const src = spec.src();
+  // The preview is mirrored, so the box has to be mirrored with it.
+  Tracker.watch(src, src && src.classList.contains('mirror'));
+  if (!trackRAF) trackRAF = requestAnimationFrame(paintTracker);
+}
+
 function attachPreviews(){
   const live = !!(stream && stream.getVideoTracks().some(t => t.readyState === 'live'));
+  // Re-point the tracker: the element it was watching may have just been
+  // given a different stream, or had the mirror turned on or off.
+  trackedScreen = null;
+  trackScreen(session.step);
   video.srcObject = stream;
   if (attractVideo) {
     attractVideo.srcObject = stream;
@@ -2531,6 +2638,19 @@ const el = sel => document.querySelector(sel);
 /* A stage too narrow to put two panes side by side — a phone held upright.
  * Mirrors `Panel.Size.compact` in the Swift build, same 700px line. */
 function compactStage(){ return window.innerWidth < 700; }
+
+/* The app name in the menu bar, sized for the bar it is in.
+ *
+ * It has to be done here rather than in CSS: pixelTextCanvas sets the
+ * canvas width and height as inline styles, and no stylesheet rule can
+ * outrank those. A phone gets a smaller wordmark so the step counter beside
+ * it keeps its own room. */
+function fitMenuBar(){
+  const title = document.getElementById('hdr-title');
+  if (title) setPixel(title, undefined, window.innerWidth < 560 ? 3
+                                      : window.innerWidth < 760 ? 4 : 6);
+}
+window.addEventListener('resize', fitMenuBar);
 const screens = {};
 document.querySelectorAll('.screen').forEach(s => screens[s.dataset.screen] = s);
 
@@ -2566,6 +2686,7 @@ function go(step){
   // The back arrow is the ✕ of this language: present only inside a session.
   el('#hdr-back').hidden = (step === 'attract');
   if (step === 'capture') updateShotCount();
+  trackScreen(step);
   // The attract screen is a mirror now, so it needs the camera as much as the
   // capture screen does. Failure is ignored: the stand-in copy is already
   // showing underneath and there is nobody to tell.
@@ -4937,6 +5058,7 @@ updateCopies();
 buildLayoutTiles();
 tickClock();
 setInterval(tickClock, 20000);
+fitMenuBar();
 tickViewfinder();
 setInterval(tickViewfinder, 1000);
 
@@ -4979,7 +5101,7 @@ if (window.Cloud) Cloud.onChange(st => {
 window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 layoutToCanvas, registerCustom, registerCanvasLayout, renderCanvas,
                 canvasPixels, sheetPixels, fitsPaper,
-                pixelTextCanvas, setPixel, compactStage, isStandalone,
+                pixelTextCanvas, setPixel, compactStage, isStandalone, fitMenuBar,
                 // Camera and print plumbing, exported so a test can reach it:
                 // the iPad route through these cannot be exercised by hand
                 // from this machine.
@@ -4992,6 +5114,11 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 slotRects,
                 raiseFlash, dropFlash, normaliseExposure, testPrint,
                 tickViewfinder, setViewfinderRecording,
+                // The subject bracket.
+                trackScreen, paintTracker, coverRect,
+                // The camera sources, so a test can feed the tracker a still
+                // through the same path a USB camera uses.
+                uvc, uvcImage, attractUvc, video, attractVideo,
                 syncNow, syncPayload, syncAbsorb, newSyncCode,
                 // The digital copy.
                 share, shareConfig, shareLink, sharePrintLink, shareUpload,

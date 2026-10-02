@@ -681,6 +681,115 @@ Cloudinary console, where the tag finds a session.
 **Not verified:** nothing here has been scanned by an actual phone camera off
 an actual tablet screen, and no upload has been made over a cafe's wifi.
 
+## SnapBox OS
+
+Oct 3 2026. He sent six references — camcorder finders burned with REC and a
+timecode, a tube UI of nested windows and menus, tracking brackets on a face
+— and asked for "a vintage VHS in a Mac OS", in the SnapBox palette.
+
+So: the app is a desktop, every panel is a window, and the camera well is a
+tube.
+
+### The windows cost no markup
+
+A panel's label row was already `[stub] [name] [rule] [value] [stub]`. That is
+a classic Mac title bar, part for part: close box, title plate, pinstripes,
+zoom box. Nothing in the DOM changed — the rule became six pinstripes, the
+stubs became boxes, and the title got a plate to sit on. `.mod` grew a hard
+five-pixel offset shadow and the stage behind it a 6px checker.
+
+**The shadow is a deliberate break from "no shadows".** That rule is there to
+keep bevels and soft glows out; a flat black rectangle offset five pixels is
+neither, and it is the one thing that makes a window sit *on* the desktop
+rather than be a hole cut in it.
+
+**The close and zoom boxes do not work, by design.** A kiosk has nothing to
+close and nothing to zoom, and a box that looked live and did nothing would be
+worse than one that plainly belongs to a drawn window. The menu titles —
+File, Tape, Camera, Help — are furniture for the same reason.
+
+### The tube
+
+Scan lines, the dark corners a consumer lens gave you, a head-switching band
+drifting along the bottom, and four white frame marks. All of it is CSS over
+the `<video>` and **none of it is a filter on it**: a filter on a live preview
+is paid for sixty times a second on a tablet, a static overlay is composited
+once. None of it can reach a photograph either — the capture reads the video
+element, not the page.
+
+The first pass was too dark. A booth's attract screen is a mirror people check
+their face in before they commit, so the scan lines came down to 22% and the
+vignette to 34%.
+
+### The brackets actually track
+
+`track.js`. It is **not** face recognition and does not pretend to be: those
+are convolutional models, megabytes of weights, in an app whose whole point is
+working offline in a cafe. `FaceDetector` is in the spec and in approximately
+no shipping browser — it is checked for, used when present, and measured
+absent here.
+
+What is left is what a 1990s camcorder did. Twelve times a second it draws the
+picture into a 96-wide scratch canvas, marks every skin-coloured pixel, floods
+the mask into blobs, and scores them. Scoring is not "biggest wins": hands are
+skin too, so height in frame counts; a lit wall is not solid, so fill counts;
+and a head-plus-neck-plus-chest blob is cropped back to its own top.
+
+Skin is two independent tests and **either** is enough. The RGB rule is good
+in daylight and poor under the warm tungsten a cafe actually has; the YCbCr
+rule survives a colour cast but lets some wood through. Requiring both would
+lose dark skin under warm light, which is not a trade this booth will make.
+
+**The mapping is the only real work.** The preview is `object-fit: cover`, so
+what is on screen is a centre crop — a 4:3 camera in a 16:9 well has a fifth
+of its height off the top and bottom. Positioning the overlay straight from
+frame coordinates puts the box near the face and never on it, which looks like
+a broken tracker and is not. And the preview is mirrored, so the box is
+mirrored with it.
+
+The label says SUBJECT while it is hunting and LOCK when the blob is solid
+enough to mean it — the claim comes from the measurement, not from the fact
+that a box is being drawn.
+
+### Measured
+
+Drawing one real portrait into a synthetic room at a known position, and
+asking what came back:
+
+| face placed at x | box reported at x |
+|---|---|
+| 0.03 | 0.13 |
+| 0.32 | 0.42 |
+| 0.61 | 0.71 |
+
+It follows. A tracker that always answered "the middle" would have passed a
+sloppier test than this one. An empty room returns nothing. Three reference
+images with no natural skin in them — two heavily cyan-graded, one a screen
+grab of a UI — return nothing, which is the honest answer rather than a
+bracket on a wall. It holds a face down to about 13% of the frame width and
+lets go below that; a guest at a booth is 20–40%.
+
+### Two things that only showed up on screen
+
+* **CSS cannot size the pixel type.** `pixelTextCanvas` writes the canvas
+  width and height as *inline* styles, and inline outranks every rule in the
+  stylesheet. Two rules in this file were trying to cap a title that way and
+  had never done anything — one of them was why the attract window's name
+  grew past its own title bar and was overdrawn by the frame. Sizes for that
+  type come from the markup's `data-cell` or from JS, never from CSS.
+* **The paint loop has to be cancelled, not just the tracker.** A booth sits
+  on the attract screen for hours; a frame callback that wakes sixty times a
+  second to decide it has nothing to do is a tablet's battery.
+
+### The logo
+
+Still needed. The file he sent is 1744x442 with ink in only a 408x408 corner
+of it: a hairline camera outline at about `#E06060`, no wordmark, darkest
+pixel at luminance 128. At menu-bar size that is invisible. The mark in the
+bar is drawn from it instead — the same body, lens and flash, as a solid
+bitmap glyph in the icon table — and should be swapped for a real file when
+one arrives.
+
 ## The tape overlay
 
 Both camera wells are dressed as a camcorder's on-screen display, from the
