@@ -2916,12 +2916,15 @@ async function countdown(token){
   setPixel(el('#cd-shot'), retaking
     ? 'RETAKING ' + shotIndex
     : (session.layout.shots > 1
-        ? 'SHOT ' + shotIndex + ' OF ' + session.layout.shots : 'ONE SHOT'), 2);
+        ? 'SHOT ' + shotIndex + ' OF ' + session.layout.shots : 'ONE SHOT'), 3);
   osd.hidden = false;
 
-  // Deliberately small: the numeral sits in the corner of the preview so the
-  // guest keeps sight of their own face for the whole count.
-  const cell = compactStage() ? 6 : 8;
+  /* Big. It used to be deliberately small, to keep the guest's own face in
+   * view through the count — but the numeral sits in a pill at the foot of
+   * the picture now rather than across it, so there is nothing to protect
+   * the face from. A count a guest has to look for is a count they miss, and
+   * the shot goes off while they are still reading it. */
+  const cell = compactStage() ? 12 : 20;
 
   for (let n = total; n >= 1; n--) {
     if (token !== session.captureToken) { osd.hidden = true; return; }
