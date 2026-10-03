@@ -790,6 +790,63 @@ bar is drawn from it instead — the same body, lens and flash, as a solid
 bitmap glyph in the icon table — and should be swapped for a real file when
 one arrives.
 
+## The booth is a camcorder; the console is not
+
+Oct 3 2026, after the kit.
+
+The two screens with a live camera are a tape deck's viewfinder: the picture
+full bleed, and the deck's own state burned into its corners — transport,
+timecode, tape speed, minutes left, the date and time, and the marks that
+show where the frame ends. Everywhere else stays the kit.
+
+That split is not a compromise between two looks. It is how a camera works.
+Status is burned into the picture because it has nowhere else to be; anything
+you *press* is still a pill floating on the glass, which is what the camera
+mockup does too. With the readouts on the picture the kit's own bar would be
+saying the same things twice in two languages, so on these two screens it is
+hidden and only the back arrow stays.
+
+**All of it is CSS over the `<video>`, never a filter on it** — a filter on a
+live preview is paid for sixty times a second on a tablet — and none of it
+can reach a photograph, because the capture reads the video element and not
+the page.
+
+**The minutes are the only honest number in the overlay.** `SP 15min` counts
+down the idle reset: it really is how long this session has before the booth
+lets the next guest in. The timecode counts from the first shutter. The rest
+is dressing and says so in the stylesheet.
+
+The vignette is deliberately light. This screen is a mirror people check
+their face in before they commit, and a heavy one makes a booth look broken
+rather than vintage.
+
+## Turning the tablet
+
+**The operator's screens rotate. The guest's do not.**
+
+A booth is landscape: it is on a stand, the camera well is wide, and a guest
+who tips it has spoiled the shot for whoever is behind them. So the guest
+screens stay locked, as they always were.
+
+Laying out a 4x6 postcard or a 50x40 label is the opposite problem. A
+portrait sheet inside a landscape window is a sliver down the middle with the
+whole control panel beside it; turned upright, the editor stacks — stage on
+top, controls underneath — and the sheet is finally worth dragging boxes
+around on. That is the whole reason this was asked for, and it is why the
+exception is the console and the editor rather than a setting.
+
+`go()` already knew which screen it was on, so it tells the shell:
+`BoothNative.setRotation(free)` flips the activity between
+`SCREEN_ORIENTATION_FULL_USER` and `SCREEN_ORIENTATION_SENSOR_LANDSCAPE`.
+**The turn is a relayout, not a restart** — `configChanges` in the manifest
+already names `orientation`, so the WebView is never recreated and the
+session, the camera and anything half-typed into the console survive it.
+
+In a browser there is nothing to do: `screen.orientation.lock` needs
+fullscreen and returns a promise rejected far more often than it is kept, so
+the attempt is made and the failure swallowed. A browser window is whatever
+shape its window is, and there is nobody to tell about that.
+
 ## The kit
 
 Oct 3 2026. He sent a component sheet and a camera-app mockup and asked for

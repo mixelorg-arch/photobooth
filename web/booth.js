@@ -2720,13 +2720,43 @@ function go(step){
   /* The two screens with a live camera on them give the picture the whole
    * app and float everything else on top of it. */
   document.body.classList.toggle('fullbleed', step === 'attract' || step === 'capture');
-  document.body.classList.toggle('operator', step === 'admin' || step === 'editor');
+  const operator = (step === 'admin' || step === 'editor');
+  document.body.classList.toggle('operator', operator);
+  applyRotation(operator);
   trackScreen(step);
   // The attract screen is a mirror now, so it needs the camera as much as the
   // capture screen does. Failure is ignored: the stand-in copy is already
   // showing underneath and there is nobody to tell.
   if (step === 'attract') startCamera().catch(() => {});
   restartIdle();
+}
+
+/* Which way up the tablet is allowed to be.
+ *
+ * A booth is landscape: it is on a stand, the camera well is wide, and a
+ * guest who tips it has spoiled the shot for whoever is behind them. So the
+ * guest screens are locked, as they have always been.
+ *
+ * The operator's screens are not. Laying out a 4x6 postcard or a 50x40 label
+ * means dragging boxes around a portrait sheet, and a portrait sheet inside a
+ * landscape window is a sliver down the middle with the panel beside it —
+ * which is the whole reason this was asked for.
+ *
+ * On the tablet the shell does it. In a browser `screen.orientation.lock`
+ * needs fullscreen and a promise that is rejected far more often than it is
+ * kept, so the failure is swallowed: a browser window is whatever shape its
+ * window is, and there is nothing to report to anybody about that.
+ */
+function applyRotation(free){
+  if (NATIVE && typeof NATIVE.setRotation === 'function') {
+    try { NATIVE.setRotation(!!free); return; } catch {}
+  }
+  const o = screen && screen.orientation;
+  if (!o) return;
+  try {
+    if (free) { if (o.unlock) o.unlock(); }
+    else if (o.lock) { const p = o.lock('landscape'); if (p && p.catch) p.catch(() => {}); }
+  } catch {}
 }
 
 function restartIdle(){
@@ -5166,7 +5196,7 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 // The Android shell calls these two: the back key abandons a
                 // session rather than leaving the app, and a Bluetooth job
                 // reports its outcome when it lands.
-                abandon, nativePrintResult,
+                abandon, nativePrintResult, applyRotation,
                 // The shell calls this when the operator starts or stops a
                 // directly-driven USB camera.
                 uvcChanged};
