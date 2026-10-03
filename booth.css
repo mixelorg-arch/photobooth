@@ -1138,3 +1138,120 @@ body.fullbleed .meter{background:rgba(255,255,255,.8)}
 [data-screen="capture"] .shotstrip{position:absolute;left:50%;bottom:88px;
   transform:translateX(-50%);width:min(420px,72%);z-index:30;
   background:rgba(255,255,255,.9)}
+
+/* ==================================================================== *
+ * THE CAMCORDER
+ *
+ * The two screens with a live camera are a tape deck's viewfinder: the
+ * picture full bleed, and the deck's own state burned into its corners.
+ * Everywhere else in the app stays the kit.
+ *
+ * That split is the brief and it is also how a camera works. Status is
+ * burned in because it has nowhere else to be; anything you press is still
+ * a pill floating on the glass, which is what the camera mockup does.
+ *
+ * All of it is CSS over the <video> — never a filter on it, which would be
+ * paid for sixty times a second on a tablet — and none of it can reach a
+ * photograph, because the capture reads the video element and not the page.
+ * ==================================================================== */
+
+/* With the deck's readouts on the picture, the kit's bar would be saying
+   the same things twice in two languages. The back arrow stays, because it
+   is the one thing on these screens you can press that is not a button on
+   the picture. */
+body.fullbleed .mark,
+body.fullbleed .hdr-title,
+body.fullbleed .hdr-val,
+body.fullbleed .hdr-clock,
+body.fullbleed .ftr{display:none}
+
+.vhs{position:absolute;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+/* Scan lines: two pixels of picture, one of gap. Coarse enough to read as a
+   tube at arm's length, fine enough not to strobe when a guest moves. */
+.vhs::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(to bottom,
+    rgba(0,0,0,.22) 0 1px, transparent 1px 3px)}
+/* The bloom, and the dark corners every consumer lens had. Kept light: this
+   screen is a mirror people check their face in before they commit, and a
+   heavy vignette makes a booth look broken rather than vintage. */
+.vhs::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(132% 118% at 50% 47%, transparent 56%, rgba(0,0,0,.34) 100%)}
+/* Head switching: the ragged band a deck left in the bottom few scan lines.
+   It drifts, because it never sat still on real hardware either. */
+.vhs i{position:absolute;left:0;right:0;bottom:6px;height:9px;opacity:.45;
+  background:repeating-linear-gradient(to right,
+    rgba(255,255,255,.22) 0 3px, transparent 3px 7px, rgba(255,255,255,.1) 7px 11px);
+  animation:vhs-drift 7s linear infinite}
+@keyframes vhs-drift{from{transform:translateX(-14px)}to{transform:translateX(14px)}}
+@media (prefers-reduced-motion:reduce){ .vhs i{animation:none} }
+
+/* ---------- the burned-in readouts ---------- */
+.vf{position:absolute;inset:0;pointer-events:none;z-index:3;color:#FFFFFF;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    /* A hairline white on a bright face disappears; the shadow is what makes
+       this legible against anything a guest happens to be wearing. */
+    text-shadow:0 0 7px rgba(255,255,255,.22),0 2px 4px rgba(0,0,0,.95)}
+.vf-b{position:absolute;display:flex;flex-direction:column;gap:5px}
+.vf-b.tl{top:20px;left:22px;align-items:flex-start}
+.vf-b.tr{top:20px;right:22px;align-items:flex-end;text-align:right}
+.vf-b.bl{bottom:20px;left:22px;align-items:flex-start}
+/* On the capture screen the back arrow holds the top-left corner, so the
+   transport readout drops below it rather than under it. */
+[data-screen="capture"] .vf-b.tl{top:82px}
+.vf-l{font-size:17px;font-weight:700;letter-spacing:.11em;line-height:1.1;
+      white-space:nowrap;font-variant-numeric:tabular-nums}
+.vf-clock,.vf-date{font-size:20px}
+
+/* The transport. PLAY while the booth waits, REC once the shutter sequence
+   is running — the one moment a guest needs to know the difference. */
+.vf-state{display:flex;align-items:center;gap:9px}
+.vf-state b{font-size:15px;line-height:1}
+.vf-dot{width:12px;height:12px;border-radius:50%;background:#E23B2E;flex:none;
+        display:none;box-shadow:0 0 9px rgba(226,59,46,.85)}
+/* Blinking, not steady: a steady red light is what a fault looks like on
+   real hardware, and every camcorder blinked while it rolled. */
+.vf.rec .vf-dot{display:block;animation:vf-blink 1s steps(2,end) infinite}
+.vf.rec .vf-state b{display:none}
+@keyframes vf-blink{50%{opacity:.12}}
+
+/* Tape speed and what is left on the cassette. The minutes are the only
+   honest number in the overlay: they count down the idle reset, which is how
+   long this session has before the booth lets the next guest in. */
+.vf-sp{display:flex;align-items:center;gap:9px}
+.vf-sp em{font-style:normal;border:2px solid currentColor;padding:0 5px;font-size:13px}
+
+/* Where the frame actually ends. */
+.vf-corner{position:absolute;width:30px;height:30px;
+  border:3px solid rgba(255,255,255,.85);
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.9))}
+.vf-corner.tl{top:16px;left:16px;border-right:0;border-bottom:0}
+.vf-corner.tr{top:16px;right:16px;border-left:0;border-bottom:0}
+.vf-corner.bl{bottom:16px;left:16px;border-right:0;border-top:0}
+.vf-corner.br{bottom:16px;right:16px;border-left:0;border-top:0}
+/* The corners frame the picture, and the readouts sit inside them. */
+.vf-b.tl,.vf-b.tr{top:56px}
+[data-screen="capture"] .vf-b.tl{top:96px}
+.vf-b.bl{bottom:56px}
+
+@media (max-width:700px){
+  .vf-l{font-size:12px;letter-spacing:.09em}
+  .vf-clock,.vf-date{font-size:14px}
+  .vf-dot{width:9px;height:9px}
+  .vf-corner{width:19px;height:19px}
+  .vf-corner.tl,.vf-corner.tr{top:10px}
+  .vf-corner.bl,.vf-corner.br{bottom:10px}
+  .vf-corner.tl,.vf-corner.bl{left:10px}
+  .vf-corner.tr,.vf-corner.br{right:10px}
+  .vf-b.tl,.vf-b.tr{top:40px}
+  .vf-b.bl{bottom:40px}
+  .vf-b.tl,.vf-b.bl{left:15px}
+  .vf-b.tr{right:15px}
+  [data-screen="capture"] .vf-b.tl{top:74px}
+}
+
+/* The strip and the countdown sit above the tape, and the bracket above
+   both: a readout may be covered by the thing it is about, never the
+   other way round. */
+.vf-track{z-index:5}
+.osd{z-index:6}
+[data-screen="capture"] .shotstrip{z-index:7}
