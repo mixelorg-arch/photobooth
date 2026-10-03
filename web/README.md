@@ -790,6 +790,51 @@ bar is drawn from it instead — the same body, lens and flash, as a solid
 bitmap glyph in the icon table — and should be swapped for a real file when
 one arrives.
 
+## His mark, and the controls as camera parts
+
+Oct 3 2026.
+
+### The logo
+
+The file is a hairline. Measured twice, and the second upload was byte for
+byte the first one: 1744x442 of canvas with ink in only a 408x408 corner of
+it, 2624 inked pixels, darkest pixel at luminance 128 — a pale salmon outline
+about one pixel wide. At the 127px it is drawn at on the start screen that is
+nothing at all, and over a photograph it is less than nothing.
+
+So **his file is the source and the geometry is his**, but it is re-rendered
+rather than used raw: cropped to its own ink box, thresholded, and dilated by
+a 4px disc, which puts the stroke at about 2% of the mark's width — the
+weight everything else in the kit is drawn at. It comes out as two PNGs,
+white for over the picture and ink for the bar, 2.8KB each.
+
+That is a real decision and worth being plain about: a 1px salmon hairline is
+not a weight any UI can carry, and scaling it up only makes a thinner line.
+A solid file would still be better than this.
+
+### The controls
+
+A pill with a bezel milled into it, and a knurled grip on the two that stand
+for camera parts — the shutter on the start screen and the dials either side
+of the copy count. Both are details off real cameras rather than decoration,
+and the knurl is drawn on the component sheet's own slider knobs.
+
+**Everything is also simply bigger.** 58px was the old floor and it was the
+floor of a settings screen; a booth is pressed by someone at arm's length who
+has never seen it before and is often holding a drink. Buttons are 76px, the
+shutter 118, the dials 108 square.
+
+**The count went from 45px to 112px.** It used to be deliberately small so a
+guest kept sight of their own face through it — but the numeral sits in a
+pill at the foot of the picture now rather than across the middle of it, so
+there is nothing left to protect the face from. A count you have to look for
+is a count you miss, and the shutter goes while you are still reading it.
+
+Growing every control is the kind of change that quietly breaks a layout, so
+the screens that were tight were measured again rather than glanced at: on
+review and confirm, no column overflows, no panel spills, and the buttons end
+38px clear of the stage foot.
+
 ## The booth is a camcorder; the console is not
 
 Oct 3 2026, after the kit.

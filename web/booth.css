@@ -1255,3 +1255,79 @@ body.fullbleed .ftr{display:none}
 .vf-track{z-index:5}
 .osd{z-index:6}
 [data-screen="capture"] .shotstrip{z-index:7}
+
+/* ==================================================================== *
+ * THE CONTROLS, AS CAMERA PARTS
+ *
+ * A pill with a ring milled into it and a knurled grip on the big ones.
+ * Both are real camera details rather than decoration: the ring is the
+ * bezel around a shutter release, the knurl is the milled edge of a dial,
+ * and the sheet this kit came from draws exactly that knurl on its slider
+ * knobs.
+ *
+ * Everything here is also simply bigger. A booth is pressed by someone
+ * standing at arm's length who has never seen it before, often holding a
+ * drink. 58px was the old floor and it was the floor of a settings screen.
+ * ==================================================================== */
+.btn{position:relative;min-height:76px;padding:0 clamp(20px,2.6vw,34px);
+     /* The bezel: paper, then ink, milled inside the outer edge. */
+     box-shadow:inset 0 0 0 4px var(--paper), inset 0 0 0 7px var(--ink)}
+.btn.solid{box-shadow:inset 0 0 0 4px var(--ink), inset 0 0 0 7px var(--paper)}
+.btn:active{box-shadow:inset 0 0 0 4px var(--ink), inset 0 0 0 7px var(--paper)}
+.btn.solid:active{box-shadow:inset 0 0 0 4px var(--paper), inset 0 0 0 7px var(--ink)}
+.btn:disabled{box-shadow:inset 0 0 0 4px var(--paper), inset 0 0 0 7px var(--hair)}
+.btn.huge{min-height:118px}
+/* The dials: the copy stepper, and anything else square. */
+.btn.sqr{width:108px;height:108px}
+
+/* The knurl. Only on the two controls that stand for a camera part — the
+   shutter on the start screen and the dials either side of the copy count.
+   On every button it would be noise. */
+.attract-go::before,.attract-go::after,
+.btn.sqr::before,.btn.sqr::after{
+  content:'';position:absolute;top:50%;transform:translateY(-50%);
+  width:22px;height:42%;opacity:.5;pointer-events:none;
+  background:repeating-linear-gradient(to right,
+    currentColor 0 2px, transparent 2px 5px)}
+.attract-go::before,.btn.sqr::before{left:18px}
+.attract-go::after,.btn.sqr::after{right:18px}
+/* Tighter on the dials: at 22px the milling closed in on the + and - until
+   the glyph was the smallest thing on a 108px control. */
+.btn.sqr::before,.btn.sqr::after{width:13px;height:48%}
+.btn.sqr::before{left:10px}
+.btn.sqr::after{right:10px}
+
+/* ---------- the mark ---------- */
+.mark{width:50px;height:50px;border-radius:var(--r-ctrl)}
+.mark img{display:block;width:28px;height:28px}
+
+/* His own mark, over the picture, above the one thing on the screen there
+   is to press. White, because everything else burned into this picture is. */
+.attract-logo{display:block;width:clamp(104px,15vh,168px);height:auto;
+  filter:drop-shadow(0 2px 10px rgba(0,0,0,.7));pointer-events:none}
+
+/* ---------- the shutter ---------- */
+.attract-go{min-height:118px;width:min(520px,78%);
+  border-width:4px;box-shadow:inset 0 0 0 5px var(--ink), inset 0 0 0 9px var(--paper)}
+.attract-go:active{box-shadow:inset 0 0 0 5px var(--paper), inset 0 0 0 9px var(--ink)}
+
+/* ---------- the count ----------
+ * Big enough to be read without looking for it. It sits in a pill at the
+ * foot of the picture, not across the face, so size costs nothing here. */
+.cd-badge{bottom:128px;gap:22px;padding:14px 34px;border-width:4px}
+.cd-foot{top:78px;padding:12px 26px;border-width:4px;gap:14px}
+.cd-foot .bars{width:170px;height:26px}
+
+@media (max-width:700px){
+  .btn{min-height:64px;padding:0 18px;
+       box-shadow:inset 0 0 0 3px var(--paper), inset 0 0 0 5px var(--ink)}
+  .btn.solid{box-shadow:inset 0 0 0 3px var(--ink), inset 0 0 0 5px var(--paper)}
+  .btn.sqr{width:84px;height:84px}
+  .btn.huge{min-height:92px}
+  .attract-go{min-height:92px;width:88%}
+  .attract-logo{width:clamp(80px,12vh,120px)}
+  .cd-badge{bottom:96px;gap:14px;padding:10px 22px}
+  .cd-foot{top:66px;padding:9px 18px}
+  .cd-foot .bars{width:120px;height:20px}
+  .attract-go::before,.attract-go::after{display:none}
+}
