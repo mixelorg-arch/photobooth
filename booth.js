@@ -1636,26 +1636,81 @@ const DEFAULTS = {
   sheetCounter: 1,
   /// Photographs are monochrome to match the print design. MONO or COLOUR.
   photoTone: 'mono',
-  /* --- preparing a photograph for a one-bit head --- */
+  /// MAX asks the open camera for its largest mode rather than taking the
+  /// browser's default, which can be VGA on a camera that offers 4K. HD
+  /// stays at 1920x1080, which is lighter on a tablet.
+  captureSize: 'max',
+  /// How long to let a just-opened camera meter before trusting a frame from
+  /// it. The countdown normally covers this; a retake does not.
+  cameraSettleMs: 700,
+  /// Freeze exposure and white balance after that settle, so every shot in a
+  /// strip matches. Only possible where the camera and browser both support
+  /// it — see cameraLockNote, which never claims a lock the booth does not
+  /// actually hold.
+  lockCamera: true,
+
+  /* --- preparing a photograph for a one-bit head ---
+   *
+   * Every one of these is a calibration value, not a taste value: they exist
+   * because a thermal head and a screen disagree, and the right number
+   * depends on the printer, the paper and the room. The defaults are a
+   * starting point for a portrait on 80mm paper; the calibration sheet in
+   * Admin prints six variants so an operator can settle them in one go
+   * rather than one print at a time.
+   *
+   * They are saved, so a device that has already been calibrated keeps its
+   * own numbers and is not moved by a change of default here.
+   */
   /// How the sheet is reduced to the only two things a thermal head can
-  /// print. 'floyd' diffuses the error into neighbouring dots and is what
-  /// makes a face look like a face; 'ordered' is a fixed screen, coarser but
-  /// more even on flat tone; 'none' hands 8-bit grey to the driver and lets
-  /// it decide, which is what the booth used to do.
-  thermalDither: 'adaptive',
+  /// print. 'atkinson' throws a quarter of the error away so faces cannot
+  /// snowball into solid black — the default, and the best of these on a
+  /// portrait; 'adaptive' follows the local average; 'floyd' diffuses all of
+  /// the error and is the most tonally accurate on an evenly lit frame;
+  /// 'ordered' is a fixed screen, coarser but even on flat tone;
+  /// 'threshold' is a hard cut, for line art only; 'none' hands 8-bit grey
+  /// to the driver and lets it decide, which is what the booth used to do.
+  thermalDither: 'atkinson',
   /// Midtone contrast before dithering. Thermal prints compress the ends of
   /// the scale, so a photograph that looks right on screen goes muddy.
-  thermalContrast: 1.35,
+  /// Mild by default, because GAMMA below does the midtone work with less
+  /// clipping at the ends.
+  thermalContrast: 1.10,
   /// Lightness before dithering. Heat spreads into the paper around each dot,
   /// so a print comes out darker than the pixels say.
-  thermalBrightness: 8,
-  /// Unsharp masking before dithering. Error diffusion smears fine edges;
-  /// a little sharpening puts them back. 0 turns it off.
+  thermalBrightness: 15,
+  /// Midtone curve before dithering. Above 1 lifts the midtones and leaves
+  /// pure black and pure white where they are, which is what the dot spread
+  /// of a thermal head actually needs — unlike brightness, which moves the
+  /// ends too, or contrast, which clips them.
+  thermalGamma: 1.10,
+  /// 3x3 median before the tone work, mixed back by this much. Off by
+  /// default: a clean frame loses eyelashes and hair texture to it. Worth
+  /// 0.3 or so in a dim venue, where sensor grain would otherwise become a
+  /// field of burned dots.
+  thermalDenoise: 0,
+  /// Unsharp masking after the photograph has been resized to printer dots
+  /// and before dithering. Error diffusion smears fine edges; a little
+  /// sharpening puts them back. 0 turns it off.
   thermalSharpen: 0.8,
+  /// Radius of that sharpening, in printed dots. About one dot at 203dpi is
+  /// 0.7-1.0; wider than that and the halo is visible as a grey ring.
+  thermalSharpenRadius: 0.8,
   /// Lifts whatever sits in local shadow — which at a booth is a face, since
   /// a face is the thing lit from one side and standing in front of a
   /// brighter room. Not face detection: see liftShadows.
   thermalFaceLift: 0.45,
+  /// The cut level for the 'threshold' dither only. Ignored by every other
+  /// mode, which decide each dot against their own moving threshold.
+  thermalThreshold: 128,
+  /// Swap black for white on the way out. A wiring fix, not a look: a few
+  /// printers read a set bit as "do not burn" and come out as a negative.
+  thermalInvert: false,
+  /// Tallest sheet to send, in printed dots. 0 for no limit. A roll has no
+  /// page length, so a long receipt is legal — but a sheet taller than the
+  /// printer's own buffer is not, and some printers answer that by
+  /// truncating silently. A sheet over this is scaled down to fit, before
+  /// dithering, and the operator is told.
+  thermalMaxHeightDots: 0,
   /* --- the receipt, on 80mm thermal --- */
   /// Names for the shot-order rows, comma separated. Falls back to FRAME 01.
   printTracks: '',
@@ -1696,11 +1751,20 @@ const DEFAULTS = {
   /// yet. Without these a delete would never travel: the next pull would
   /// find the layout still on the server and put it straight back.
   syncTombstones: [],
+  /// How many photographs the calibration sheet prints, each with the same
+  /// six variants. One is usually enough; more is for comparing a face
+  /// against a group shot, which fail differently on one bit.
+  calibrationSamples: 1,
   /// Hide the print options from the guest: no copy count, no spec table,
   /// no SAVE PNG. Press PRINT and paper comes out. The operator's settings
   /// decide the copies.
   quickPrint: true,
-  /// Imaging width of the thermal head. 576 = 80mm, 384 = 58mm.
+  /// Imaging width of the thermal head, in dots. 576 = 80mm and 384 = 58mm
+  /// at 203dpi, 832 = 104mm on a 4-inch label printer — but these are
+  /// conventions, not a rule: an 80mm printer with a 640-dot head exists and
+  /// a 576-dot sheet on one prints narrow with a white margin. It is a
+  /// number to be set from the printer's own specification, which is why it
+  /// can be typed as well as picked.
   thermalWidthDots: 576,
   /* --- the layout editor --- */
   /// Paper sizes the operator added, in the same shape as MEDIA.
@@ -2378,9 +2442,184 @@ async function upgradeToExternalCamera(){
     stream = better;
     attachPreviews();
     try { await video.play(); } catch {}
+    // A different camera is a different sensor: whatever was measured and
+    // locked on the built-in one means nothing here.
+    await prepareCamera();
   } catch {
     // The built-in one is already running and working. Keep it.
   }
+}
+
+
+/* ==================================================================== *
+ * Getting the most out of the camera, before any of it is thrown away
+ *
+ * A one-bit print has no tonal range to spare, so everything the camera can
+ * be persuaded to do better is worth more here than in a colour booth. Three
+ * things, in the order they matter:
+ *
+ *   RESOLUTION. getUserMedia is asked for 1920x1080 as an *ideal*, which a
+ *   browser satisfies with the nearest mode it has — and "nearest" can mean
+ *   640x480 on a camera that also offers 4K, because the browser is picking a
+ *   sensible default rather than the best one. Asking the track what it can
+ *   actually do, and then asking for that, is the difference.
+ *
+ *   SETTLE. A webcam that has just opened is in the middle of metering. The
+ *   first second of frames is a visible ramp of exposure and white balance,
+ *   and a frame grabbed from the middle of it is mis-exposed in a way nothing
+ *   downstream can fix. The countdown already covers this in the normal
+ *   flow — it is three seconds — but a retake can come back to a camera that
+ *   has just been reopened, so it is made explicit rather than assumed.
+ *
+ *   LOCK. Once it has settled, freezing exposure and white balance keeps
+ *   every shot in a strip matching, instead of the camera re-metering between
+ *   frames because someone leaned out of shot. This is the one that is
+ *   genuinely not available everywhere: the constraints are optional in the
+ *   spec, most browsers outside Chrome do not implement them, and most USB
+ *   webcams do not expose manual modes at all. So the booth asks, reads back
+ *   what it actually got, and says so in Admin. It never claims a lock it
+ *   does not hold.
+ * ==================================================================== */
+
+/// What the open camera can do, and what the booth actually got. Read by
+/// Admin, which must not tell an operator a lock is on when it is not.
+const cameraState = {
+  width: 0, height: 0,
+  settling: false,
+  supports: {exposure: false, whiteBalance: false, focus: false, resolution: false},
+  locked: {exposure: false, whiteBalance: false, focus: false},
+  note: '',
+};
+
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+
+/// Ask the open track for its biggest mode and take it.
+async function maximiseCapture(track){
+  const got = track.getSettings ? track.getSettings() : {};
+  cameraState.width = got.width || 0;
+  cameraState.height = got.height || 0;
+  if (settings.captureSize !== 'max') return;
+  if (!track.getCapabilities) {
+    // Safari and Firefox do not implement getCapabilities on a video track.
+    // Nothing is broken; the booth simply cannot know there is more to ask
+    // for, and says that rather than implying it tried.
+    cameraState.note = 'This browser will not say what the camera can do, so ' +
+      'the booth asked for 1920x1080 and took what it was given.';
+    return;
+  }
+  let cap;
+  try { cap = track.getCapabilities(); } catch { return; }
+  const maxW = cap.width && cap.width.max, maxH = cap.height && cap.height.max;
+  if (!maxW || !maxH) return;
+  cameraState.supports.resolution = true;
+  if (maxW <= (got.width || 0)) return;        // already at the top
+  try {
+    await track.applyConstraints({width: {ideal: maxW}, height: {ideal: maxH}});
+    const now = track.getSettings();
+    cameraState.width = now.width || cameraState.width;
+    cameraState.height = now.height || cameraState.height;
+  } catch {
+    // An over-constrained camera keeps the mode it had, which is a working
+    // camera at a smaller size — not an error worth showing a guest.
+  }
+}
+
+/* Settle, then lock what can be locked.
+ *
+ * The order is not arbitrary. Focus is asked for first and given its own
+ * moment, because a lens still hunting makes the exposure reading meaningless.
+ * Then the settle wait. Then exposure and white balance are frozen at
+ * whatever the camera decided during that wait — freezing them before it has
+ * decided would lock in the wrong answer, which is worse than not locking at
+ * all.
+ */
+async function settleAndLock(track){
+  cameraState.settling = true;
+  cameraState.locked = {exposure: false, whiteBalance: false, focus: false};
+  try {
+    const cap = track.getCapabilities ? track.getCapabilities() : {};
+    const has = (k, v) => Array.isArray(cap[k]) && cap[k].indexOf(v) >= 0;
+    cameraState.supports.exposure = has('exposureMode', 'manual');
+    cameraState.supports.whiteBalance = has('whiteBalanceMode', 'manual');
+    cameraState.supports.focus = has('focusMode', 'continuous') || has('focusMode', 'single-shot');
+
+    if (settings.lockCamera && cameraState.supports.focus) {
+      const mode = has('focusMode', 'continuous') ? 'continuous' : 'single-shot';
+      try { await track.applyConstraints({focusMode: mode}); } catch {}
+      await sleepMs(250);
+    }
+
+    await sleepMs(Math.max(0, settings.cameraSettleMs | 0));
+
+    if (settings.lockCamera) {
+      for (const [key, flag] of [['exposureMode', 'exposure'],
+                                 ['whiteBalanceMode', 'whiteBalance']]) {
+        if (!cameraState.supports[flag]) continue;
+        try {
+          await track.applyConstraints({[key]: 'manual'});
+          // Read it back. applyConstraints resolving is not the same as the
+          // camera having done it, and a lock the booth only believes in is
+          // worth nothing to the operator reading the panel.
+          const now = track.getSettings ? track.getSettings() : {};
+          cameraState.locked[flag] = now[key] === 'manual';
+        } catch { cameraState.locked[flag] = false; }
+      }
+      if (cameraState.supports.focus) {
+        const now = track.getSettings ? track.getSettings() : {};
+        cameraState.locked.focus = now.focusMode === 'continuous' ||
+                                   now.focusMode === 'single-shot';
+      }
+    }
+  } finally {
+    cameraState.settling = false;
+  }
+}
+
+/// Everything above, for whichever track is open. Safe to call again.
+async function prepareCamera(){
+  const track = stream && stream.getVideoTracks()[0];
+  if (!track) return;
+  cameraState.note = '';
+  await maximiseCapture(track);
+  await settleAndLock(track);
+}
+
+/// Hold until the camera has stopped adjusting. The countdown normally
+/// covers this; a retake onto a just-reopened camera does not.
+async function cameraReady(){
+  for (let i = 0; i < 40 && cameraState.settling; i++) await sleepMs(50);
+}
+
+/// One line for Admin, saying only what is true of this camera in this
+/// browser. The honest answer is often "this browser will not say".
+function cameraLockNote(){
+  if (!stream) return 'No camera is open, so nothing has been measured yet.';
+  const s = cameraState.supports, l = cameraState.locked;
+  if (!s.exposure && !s.whiteBalance && !s.focus) {
+    return 'This camera and browser offer no manual exposure, white balance ' +
+           'or focus control, so the booth cannot lock any of them — it waits ' +
+           (settings.cameraSettleMs | 0) + 'ms after opening the camera for ' +
+           'its own metering to settle, and that is all it can do. Most USB ' +
+           'webcams are like this, and so is every browser except Chrome. ' +
+           'AUTO EXPOSURE above is the booth correcting the frame itself ' +
+           'afterwards, which does not depend on the camera at all.';
+  }
+  const held = [l.exposure && 'exposure', l.whiteBalance && 'white balance',
+                l.focus && 'focus'].filter(Boolean);
+  const offered = [s.exposure && 'exposure', s.whiteBalance && 'white balance',
+                   s.focus && 'focus'].filter(Boolean);
+  if (!held.length) {
+    return 'This camera offers ' + offered.join(' and ') + ' control, but the ' +
+           'booth asked and did not get it. Shots in one strip may differ in ' +
+           'brightness if the lighting changes between them.';
+  }
+  return 'Locked after opening: ' + held.join(', ') + '. Every shot in a strip ' +
+         'is then exposed the same way, instead of the camera re-metering ' +
+         'because someone leaned out of frame.' +
+         (held.length < offered.length
+            ? ' Offered but not held: ' +
+              offered.filter(o => held.indexOf(o) < 0).join(', ') + '.'
+            : '');
 }
 
 async function startCamera(){
@@ -2423,6 +2662,10 @@ async function startCamera(){
   camMsg.hidden = true;
   try { await video.play(); } catch {}
   await upgradeToExternalCamera();
+  // Not awaited: the settle is three quarters of a second and the START
+  // button has already been pressed. The capture flow waits on it instead,
+  // by which time the countdown has usually covered it entirely.
+  prepareCamera();
   return true;
 }
 
@@ -2887,6 +3130,13 @@ async function runCaptureSequence(targets){
     await countdown(token);
     if (token !== session.captureToken) return;
 
+    // A camera that is still metering hands back a frame from the middle of
+    // its own ramp, and no amount of tone work downstream recovers a wrong
+    // exposure. The countdown has normally covered this already; a retake
+    // onto a just-reopened camera has not.
+    await cameraReady();
+    if (token !== session.captureToken) return;
+
     // Light first, expose second, drop the light third. Doing these in any
     // other order is what made the old flash decorative.
     await raiseFlash();
@@ -3008,240 +3258,15 @@ function buildShotStrip(){
 /* ==================================================================== *
  * Preparing a sheet for a one-bit head
  *
- * A thermal printer burns a dot or it does not. There is no grey, and no
- * amount of capture resolution changes that — the camera already hands the
- * booth more than twice the pixels a 100mm label can print. What decides how
- * much of a face survives is which dots get burned, and until now the booth
- * sent 8-bit grey and let the printer's own driver choose. Vendor drivers
- * generally threshold: every tone above some level becomes white, everything
- * below becomes black, and a face turns into two flat shapes.
+ * The pipeline itself lives in imaging.js, which is loaded first and shares
+ * this scope: `processForPrint` and the primitives it is built from —
+ * greyscale, brightness, contrast, gamma, noise reduction, shadow lift,
+ * sharpening, and the five dithers — are all declared there, with the
+ * reasoning for the order written out at the head of that file.
  *
- * Doing it here instead, with error diffusion, is the whole difference. Each
- * dot takes the nearest of black or white, and the error — how wrong that
- * choice was — is pushed into the neighbours not yet decided, so a midtone
- * becomes a texture of black and white dots that reads as grey at arm's
- * length. The driver is then handed pure black and white and has nothing left
- * to decide.
- *
- * Order matters: tone first, then sharpening, then dithering. Sharpening
- * after a dither would only sharpen dot noise, and tone applied after would
- * have nothing continuous left to work on.
+ * What stays here is the booth's end of it: which settings feed the
+ * pipeline, when it runs, and how the result is encoded for the printer.
  * ==================================================================== */
-
-/// Luminance, the way the eye weights it. A flat average makes skin too dark
-/// and skies too light, which on one bit is the difference between a face and
-/// a silhouette.
-const LUMA_R = 0.2126, LUMA_G = 0.7152, LUMA_B = 0.0722;
-
-/* A 4x4 ordered (Bayer) screen, scaled to thresholds. Coarser than error
- * diffusion on a photograph, but it does not smear, so large flat areas stay
- * even instead of growing the worms error diffusion can produce. */
-const BAYER4 = [
-  [ 0,  8,  2, 10],
-  [12,  4, 14,  6],
-  [ 3, 11,  1,  9],
-  [15,  7, 13,  5],
-];
-
-/* The average brightness of each pixel's *neighbourhood*, which is what makes
- * the next two steps local rather than global.
- *
- * Computed on a downsampled grid and sampled back bilinearly. A true blur of
- * this radius over a million dots would cost more than the whole rest of the
- * pipeline; at this radius the difference is invisible, because the map is
- * only ever used as a slowly varying reference level.
- */
-function localMean(lum, W, H, radius){
-  const step = Math.max(1, Math.round(radius / 2));
-  const sw = Math.max(1, Math.ceil(W / step)), sh = Math.max(1, Math.ceil(H / step));
-  let grid = new Float32Array(sw * sh);
-  const count = new Float32Array(sw * sh);
-  for (let y = 0; y < H; y++) {
-    const gy = (y / step) | 0;
-    for (let x = 0; x < W; x++) {
-      const gi = gy * sw + ((x / step) | 0);
-      grid[gi] += lum[y * W + x]; count[gi]++;
-    }
-  }
-  for (let i = 0; i < grid.length; i++) grid[i] /= (count[i] || 1);
-
-  // Two box passes over the small grid: close enough to a gaussian that
-  // nothing downstream can tell, at a fraction of the cost.
-  for (let pass = 0; pass < 2; pass++) {
-    const next = new Float32Array(sw * sh);
-    for (let y = 0; y < sh; y++) {
-      for (let x = 0; x < sw; x++) {
-        let sum = 0, n = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          const yy = y + dy; if (yy < 0 || yy >= sh) continue;
-          for (let dx = -1; dx <= 1; dx++) {
-            const xx = x + dx; if (xx < 0 || xx >= sw) continue;
-            sum += grid[yy * sw + xx]; n++;
-          }
-        }
-        next[y * sw + x] = sum / n;
-      }
-    }
-    grid = next;
-  }
-
-  // Back up to full size, bilinear, so the map has no visible blocking.
-  const out = new Float32Array(W * H);
-  for (let y = 0; y < H; y++) {
-    const fy = Math.min(sh - 1, y / step), y0 = fy | 0, y1 = Math.min(sh - 1, y0 + 1), ty = fy - y0;
-    for (let x = 0; x < W; x++) {
-      const fx = Math.min(sw - 1, x / step), x0 = fx | 0, x1 = Math.min(sw - 1, x0 + 1), tx = fx - x0;
-      const a = grid[y0 * sw + x0], b = grid[y0 * sw + x1];
-      const c = grid[y1 * sw + x0], d = grid[y1 * sw + x1];
-      out[y * W + x] = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
-    }
-  }
-  return out;
-}
-
-/* Lift what is sitting in local shadow, and leave everything else alone.
- *
- * This is the "brighten faces" step, and it is worth being exact about what
- * it is not: there is no face detection here. The browsers this runs in do
- * not offer one — Safari has no Shape Detection API at all and Chrome has
- * unshipped its FaceDetector — and carrying a detection model would mean
- * megabytes of weights in an app whose whole point is that it works offline
- * with no network permission at all.
- *
- * What it does instead is exploit the one thing reliably true of a booth
- * photograph: the face is the subject, the subject is nearer the light than
- * the background, and on thermal paper the part that fails is whatever sits
- * in local shadow — cheeks, eye sockets, the underside of a chin — which
- * fills in solid black and takes the features with it. Lifting by *local*
- * average rather than a global curve raises exactly those regions without
- * flattening the rest of the sheet, and the headroom term stops highlights
- * from washing out.
- *
- * Returns the local mean map, because the adaptive dither wants it too and
- * computing it twice would be waste.
- */
-function liftShadows(lum, W, H, amount){
-  const radius = Math.max(8, Math.round(Math.min(W, H) / 12));
-  const mean = localMean(lum, W, H, radius);
-  if (amount > 0) {
-    for (let i = 0; i < lum.length; i++) {
-      // How deeply this neighbourhood sits in shadow. Zero once the
-      // surroundings reach mid-grey, so lit areas are untouched.
-      const shade = mean[i] >= 140 ? 0 : (140 - mean[i]) / 140;
-      if (shade === 0) continue;
-      // How much room is left before white. Protects highlights.
-      const head = lum[i] >= 235 ? 0 : (235 - lum[i]) / 235;
-      const v = lum[i] + amount * 55 * shade * head;
-      lum[i] = v > 255 ? 255 : v;
-    }
-  }
-  return mean;
-}
-
-/// Sharpen in place: out = in + amount * (in - blur), with a 3x3 box blur.
-/// Cheap, and at 203dpi indistinguishable from anything more principled.
-function unsharp(lum, W, H, amount){
-  if (amount <= 0) return;
-  const blur = new Float32Array(lum.length);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      let sum = 0, n = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        const yy = y + dy;
-        if (yy < 0 || yy >= H) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          const xx = x + dx;
-          if (xx < 0 || xx >= W) continue;
-          sum += lum[yy * W + xx]; n++;
-        }
-      }
-      blur[y * W + x] = sum / n;
-    }
-  }
-  for (let i = 0; i < lum.length; i++) {
-    lum[i] = lum[i] + amount * (lum[i] - blur[i]);
-  }
-}
-
-/* Floyd-Steinberg, scanned boustrophedon - left to right, then right to
- * left. Always scanning the same way walks the error across the page and
- * leaves a visible diagonal grain; alternating cancels it. */
-function ditherFloyd(lum, W, H){
-  for (let y = 0; y < H; y++) {
-    const ltr = (y & 1) === 0;
-    for (let i = 0; i < W; i++) {
-      const x = ltr ? i : W - 1 - i;
-      const idx = y * W + x;
-      const was = lum[idx];
-      const now = was < 128 ? 0 : 255;
-      lum[idx] = now;
-      const err = was - now;
-      if (err === 0) continue;            // pure black and white cost nothing
-      const fwd = ltr ? 1 : -1;
-      const hasNext = ltr ? x + 1 < W : x - 1 >= 0;
-      const hasPrev = ltr ? x - 1 >= 0 : x + 1 < W;
-      if (hasNext) lum[idx + fwd] += err * 0.4375;            // 7/16
-      if (y + 1 < H) {
-        if (hasPrev) lum[idx + W - fwd] += err * 0.1875;      // 3/16
-        lum[idx + W] += err * 0.3125;                          // 5/16
-        if (hasNext) lum[idx + W + fwd] += err * 0.0625;      // 1/16
-      }
-    }
-  }
-}
-
-/* Error diffusion against a threshold that follows the local average.
- *
- * Plain Floyd-Steinberg decides every dot against the same mid-grey. That is
- * right for an evenly lit picture and wrong for a booth, where one region of
- * the sheet can sit well below the threshold and another well above: the dark
- * region has every dot fall the same way and goes solid, and detail inside it
- * is lost no matter how much error is diffused.
- *
- * Letting the threshold drift toward the neighbourhood's own average means a
- * dark region is judged against dark, so its internal structure survives. The
- * drift is partial — a fraction of the way, not all of it — because a
- * threshold that tracked the local mean exactly would reproduce only edges
- * and throw away the tone itself. It is clamped so no region can end up
- * deciding everything one way.
- */
-function ditherAdaptive(lum, W, H, mean, strength){
-  const k = strength === undefined ? 0.55 : strength;
-  for (let y = 0; y < H; y++) {
-    const ltr = (y & 1) === 0;
-    for (let i = 0; i < W; i++) {
-      const x = ltr ? i : W - 1 - i;
-      const idx = y * W + x;
-      let t = 128 + (mean[idx] - 128) * k;
-      if (t < 64) t = 64; else if (t > 196) t = 196;
-      const was = lum[idx];
-      const now = was < t ? 0 : 255;
-      lum[idx] = now;
-      const err = was - now;
-      if (err === 0) continue;
-      const fwd = ltr ? 1 : -1;
-      const hasNext = ltr ? x + 1 < W : x - 1 >= 0;
-      const hasPrev = ltr ? x - 1 >= 0 : x + 1 < W;
-      if (hasNext) lum[idx + fwd] += err * 0.4375;
-      if (y + 1 < H) {
-        if (hasPrev) lum[idx + W - fwd] += err * 0.1875;
-        lum[idx + W] += err * 0.3125;
-        if (hasNext) lum[idx + W + fwd] += err * 0.0625;
-      }
-    }
-  }
-}
-
-function ditherOrdered(lum, W, H){
-  for (let y = 0; y < H; y++) {
-    const rowScreen = BAYER4[y & 3];
-    for (let x = 0; x < W; x++) {
-      const t = (rowScreen[x & 3] + 0.5) * 16;   // 8 .. 248
-      const idx = y * W + x;
-      lum[idx] = lum[idx] < t ? 0 : 255;
-    }
-  }
-}
 
 /* Reduce a rendered sheet to what the head can actually burn.
  *
@@ -3269,61 +3294,324 @@ function sheetDataURL(sheet, media){
     : sheet.toDataURL('image/jpeg', 0.95);
 }
 
-function thermalize(canvas, media, opts){
+/* The booth's settings, as the options `processForPrint` takes.
+ *
+ * One place, so the live sheet, the calibration preview and the test sheet
+ * are all driven by the same numbers. Anything passed in `opts` wins, which
+ * is how the calibration sheet prints six variants of one photograph without
+ * touching what is saved.
+ */
+function thermalOptions(opts){
   opts = opts || {};
-  const mode = opts.dither || settings.thermalDither || 'floyd';
-  if (!media || !media.thermal || mode === 'none') return canvas;
+  const pick = (k, s) => opts[k] !== undefined ? opts[k] : settings[s];
+  return {
+    dither:        pick('dither', 'thermalDither') || 'atkinson',
+    brightness:    pick('brightness', 'thermalBrightness'),
+    contrast:      pick('contrast', 'thermalContrast'),
+    gamma:         pick('gamma', 'thermalGamma'),
+    denoise:       pick('denoise', 'thermalDenoise'),
+    faceLift:      pick('faceLift', 'thermalFaceLift'),
+    sharpen:       pick('sharpen', 'thermalSharpen'),
+    sharpenRadius: pick('sharpenRadius', 'thermalSharpenRadius'),
+    threshold:     pick('threshold', 'thermalThreshold'),
+    invert:        pick('invert', 'thermalInvert'),
+  };
+}
 
+/* Reduce a rendered sheet to what the head can actually burn.
+ *
+ * Works on the canvas in place and returns it, so a caller can treat it as
+ * the same sheet it passed in. A media that is not thermal leaves the pixels
+ * untouched — and so does a dither of 'none', except that INVERT still
+ * applies, because a printer with reversed polarity needs the swap whether
+ * or not the booth did the halftoning.
+ */
+function thermalize(canvas, media, opts){
+  if (!media || !media.thermal) return canvas;
   const W = canvas.width, H = canvas.height;
   if (!W || !H) return canvas;
-  const g = canvas.getContext('2d');
-  const img = g.getImageData(0, 0, W, H);
-  const d = img.data;
+  const o = thermalOptions(opts);
+  /* OFF means exactly that: the sheet goes out as the renderer drew it and
+   * the driver does its own halftoning. Not "run the tone work and skip the
+   * dither" — an operator who turns the booth's processing off is comparing
+   * it against their driver, and a half-processed sheet answers nothing.
+   *
+   * INVERT is the one exception, because it is a wiring fact about the
+   * printer rather than part of the look, and a reversed-polarity printer
+   * needs it whoever did the halftoning. */
+  if (o.dither === 'none') return o.invert ? invertCanvas(canvas) : canvas;
 
-  const contrast = opts.contrast !== undefined ? opts.contrast : settings.thermalContrast;
-  const bright = opts.brightness !== undefined ? opts.brightness : settings.thermalBrightness;
-  const sharpen = opts.sharpen !== undefined ? opts.sharpen : settings.thermalSharpen;
-  const lift = opts.faceLift !== undefined ? opts.faceLift : settings.thermalFaceLift;
-
-  /* The order below is the pipeline, and each step is where it is for a
-   * reason:
-   *
-   *   greyscale -> contrast -> lift local shadow -> sharpen -> dither
-   *
-   * Greyscale first because everything after it works on one channel, and
-   * weighting the channels by how the eye sees them is what keeps skin from
-   * going to slate. Contrast next, while the tone is still continuous.
-   * Shadow lifting after contrast, because contrast is what pushes faces
-   * into the shadow that then needs lifting. Sharpening after the tone is
-   * settled but before the dither, since sharpening a dithered image only
-   * sharpens dot noise. Dithering last, because nothing can be adjusted
-   * once there are only two values left.
-   *
-   * (Upscaling belongs to this pipeline too, but happens earlier, where the
-   * photograph is drawn into the sheet — see SMOOTHING in the renderers.)
-   */
-  const lum = new Float32Array(W * H);
-  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-    let v = LUMA_R * d[i] + LUMA_G * d[i + 1] + LUMA_B * d[i + 2];
-    v = (v - 128) * contrast + 128 + bright;
-    lum[p] = v < 0 ? 0 : v > 255 ? 255 : v;
+  /* The long-receipt guard, and it has to happen here — before the dither,
+   * never after. A roll has no page length, so a tall sheet is perfectly
+   * legal; a sheet taller than the printer's own raster buffer is not, and
+   * the way some printers answer that is to truncate it without saying so.
+   * Scaled down to fit rather than cropped, because losing the footer is
+   * worse than a slightly narrower print. 0 means no limit, which is the
+   * default: most printers manage a two-metre receipt without complaint. */
+  const cap = settings.thermalMaxHeightDots | 0;
+  if (cap > 0 && H > cap) {
+    canvas = resizeForPrinter(canvas, Math.max(16, Math.round(W * cap / H))).canvas;
   }
+  return processForPrint(canvas, o);
+}
 
-  // Also returns the local average, which the adaptive dither needs.
-  const mean = liftShadows(lum, W, H, lift);
-  unsharp(lum, W, H, sharpen);
-
-  if (mode === 'ordered') ditherOrdered(lum, W, H);
-  else if (mode === 'floyd') ditherFloyd(lum, W, H);
-  else ditherAdaptive(lum, W, H, mean);
-
-  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-    const v = lum[p];
-    d[i] = d[i + 1] = d[i + 2] = v;
-    d[i + 3] = 255;
+/// Swap black for white across a finished sheet, in place.
+function invertCanvas(canvas){
+  const g = canvas.getContext('2d');
+  const img = g.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2];
   }
   g.putImageData(img, 0, 0);
   return canvas;
+}
+
+/* ==================================================================== *
+ * Calibration
+ *
+ * Every number in THERMAL IMAGE is a guess until it has been printed. The
+ * printer's dot spread, the paper's sensitivity and the room's light are all
+ * unknown to the booth, and they move: a different roll of paper is a
+ * different calibration. So rather than describe the settings and hope, this
+ * section does two things.
+ *
+ * It shows the photograph in hand twice, side by side, at the exact pixel
+ * size and shape it will print — the frame on the left, the actual dots on
+ * the right. That catches everything except the paper itself.
+ *
+ * And it prints a sheet of six labelled variants of the same photograph, so
+ * the paper answers the remaining question in one print instead of six.
+ * ==================================================================== */
+
+/* The size of the first photograph on the sheet, in printer dots.
+ *
+ * Three engines place photographs three different ways, so this asks each in
+ * its own terms rather than pretending there is one answer. It matters
+ * because the preview has to be at the print's own scale: a dither viewed at
+ * any other size is a different picture, and the whole point of the preview
+ * is that it is not.
+ */
+function photoBoxDots(tpl, media){
+  const px = sheetPixels(tpl, media);
+  if (tpl.kind === 'canvas') {
+    // The editor's element key is `t`, not `type` — see ELEMENT_TYPES. Getting
+    // that wrong is silent: every canvas layout fell through to the sheet
+    // size below, and the preview showed the right dots at the wrong shape.
+    const ph = (tpl.elements || []).find(e => e.t === 'photo');
+    if (ph) return {w: Math.max(1, Math.round(ph.w * px.w)),
+                    h: Math.max(1, Math.round(ph.h * px.h))};
+  } else if (media.flow) {
+    // A receipt's photograph is the full column width; its height follows
+    // from the layout's cell aspect. See receiptPlan for the padding.
+    const w = Math.round(px.w - 2 * (tpl.pad || 0.08) * px.w);
+    return {w: w, h: Math.max(1, Math.round(w / (tpl.cellAspect || 1)))};
+  } else {
+    const r = slotRects(tpl, px.w, px.h)[0];
+    if (r && r.r && r.r.w) return {w: Math.round(r.r.w), h: Math.round(r.r.h)};
+  }
+  return {w: px.w, h: px.h};
+}
+
+/* A photograph to calibrate against.
+ *
+ * The one in hand if there is one — an operator standing at the console
+ * mid-event has just taken a picture of the actual room under the actual
+ * light, which is worth more than any sample. Otherwise the editor's sample
+ * faces, which at least have skin, hair and an eye in them. A gradient
+ * target would be easier to reason about and useless for the thing being
+ * judged, which is whether a face survives.
+ */
+function calibrationSource(){
+  const taken = (session.photos || []).filter(Boolean);
+  if (taken.length) return taken[taken.length - 1];
+  const samples = typeof edSamplePhotos === 'function' ? edSamplePhotos() : [];
+  return samples[0] || null;
+}
+
+/* The six variants on the test sheet.
+ *
+ * Chosen to answer the two questions an operator actually has, in the order
+ * they have them: which halftone, and then how much midtone lift. The sixth
+ * is the control — a hard threshold is what the printer's own driver would
+ * have done — because a comparison with nothing to compare against is not a
+ * comparison.
+ */
+function calibrationVariants(){
+  const base = thermalOptions();
+  const v = (label, over) => ({label: label, opts: Object.assign({}, base, over)});
+  return [
+    v('1 ATKINSON',   {dither: 'atkinson'}),
+    v('2 DIFFUSION',  {dither: 'floyd'}),
+    v('3 ADAPTIVE',   {dither: 'adaptive'}),
+    v('4 SCREEN',     {dither: 'ordered'}),
+    v('5 GAMMA +0.25', {dither: 'atkinson', gamma: +( (base.gamma || 1) + 0.25 ).toFixed(2)}),
+    v('6 THRESHOLD',  {dither: 'threshold', threshold: base.threshold}),
+  ];
+}
+
+/* Build the calibration sheet.
+ *
+ * Two passes, and the order of them is the point. Labels and rules are drawn
+ * first and thresholded to one bit on their own, because antialiased type is
+ * grey and grey is not a thing this printer has. Then the already-dithered
+ * cells are pasted in at 1:1 with smoothing off, so nothing touches them
+ * afterwards. Dithering the whole sheet at the end would have re-dithered
+ * every cell and made the comparison meaningless — which is the same mistake
+ * as rescaling a dither, one step later.
+ */
+function calibrationSheet(samples){
+  const media = currentMedia();
+  const tpl = activeLayout();
+  const source = calibrationSource();
+  if (!source) return null;
+
+  const shots = Math.max(1, Math.min(4, samples | 0));
+  const photos = (session.photos || []).filter(Boolean);
+  const pool = photos.length >= shots ? photos.slice(-shots)
+             : (typeof edSamplePhotos === 'function' ? edSamplePhotos() : [source]);
+
+  const W = Math.max(128, settings.thermalWidthDots | 0);
+  const box = photoBoxDots(tpl, media);
+  const aspect = box.w / box.h;
+
+  const pad = Math.round(W * 0.025);
+  const gap = Math.round(W * 0.022);
+  const cellW = Math.floor((W - pad * 2 - gap) / 2);
+  const cellH = Math.max(1, Math.round(cellW / aspect));
+  const labelH = Math.max(18, Math.round(W * 0.042));
+  /* The header is three lines of type, so its height is measured from them
+   * rather than guessed at a fraction of the width: at 576 dots a guessed
+   * 10% put the settings line straight through the first cell's label. */
+  const titleH = Math.round(W * 0.055);
+  const metaH = Math.round(W * 0.032);
+  const headH = Math.round(W * 0.095) + labelH + Math.round(W * 0.035);
+  const blockH = headH + 3 * (labelH + cellH + gap);
+
+  const variants = calibrationVariants();
+  const sheet = document.createElement('canvas');
+  sheet.width = W;
+  sheet.height = pad * 2 + blockH * shots;
+  const g = sheet.getContext('2d');
+  g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, W, sheet.height);
+
+  // Pass one: everything that is type.
+  const base = thermalOptions();
+  const stamp = new Date().toLocaleString();
+  g.fillStyle = '#111111';
+  g.textBaseline = 'alphabetic';
+  const cells = [];
+  for (let s = 0; s < shots; s++) {
+    const top = pad + s * blockH;
+    g.font = '700 ' + titleH + 'px ui-sans-serif, system-ui, sans-serif';
+    g.fillText('SNAPBOX CALIBRATION', pad, top + titleH);
+    g.font = metaH + 'px ui-monospace, monospace';
+    g.fillText(media.shortName + '  ' + W + ' dots  ' + stamp,
+               pad, top + Math.round(W * 0.095));
+    // The settings every cell shares, printed on the sheet, because a test
+    // print found in a drawer a week later has to say what it was testing.
+    g.fillText('B' + base.brightness + ' C' + base.contrast + ' G' + base.gamma +
+               ' S' + base.sharpen + '/' + base.sharpenRadius +
+               ' L' + base.faceLift + ' N' + base.denoise,
+               pad, top + Math.round(W * 0.095) + labelH);
+    for (let i = 0; i < 6; i++) {
+      const col = i % 2, rowI = Math.floor(i / 2);
+      const x = pad + col * (cellW + gap);
+      const y = top + headH + labelH + rowI * (labelH + cellH + gap);
+      g.font = '700 ' + Math.round(labelH * 0.72) + 'px ui-monospace, monospace';
+      g.fillText(variants[i].label, x, y - Math.round(labelH * 0.25));
+      g.strokeStyle = '#111111'; g.lineWidth = 2;
+      g.strokeRect(x - 1, y - 1, cellW + 2, cellH + 2);
+      cells.push({x: x, y: y, variant: variants[i], photo: pool[s % pool.length] || source});
+    }
+  }
+  // One bit for the type, on its own, before any cell is pasted in.
+  processForPrint(sheet, {dither: 'threshold', threshold: 170});
+
+  // Pass two: the pictures, each dithered at its own size, pasted untouched.
+  g.imageSmoothingEnabled = false;
+  for (const cell of cells) {
+    const cropped = cropPortrait(cell.photo, aspect, 'face');
+    const sized = resizeForPrinter(cropped, cellW).canvas;
+    const copy = document.createElement('canvas');
+    copy.width = sized.width; copy.height = sized.height;
+    const cg = copy.getContext('2d');
+    cg.imageSmoothingEnabled = false;
+    cg.drawImage(sized, 0, 0);
+    processForPrint(copy, cell.variant.opts);
+    g.drawImage(copy, cell.x, cell.y);
+  }
+  return sheet;
+}
+
+/* Print it, down whichever route the booth has.
+ *
+ * Through `printRasterImage` like any other sheet, so a calibration print is
+ * subject to the same evidence rule as a guest's: it reports what the
+ * printer said, and nothing when the printer said nothing.
+ */
+function printCalibrationSheet(){
+  const sheet = calibrationSheet(settings.calibrationSamples);
+  if (!sheet) { toast('No photograph to calibrate with — take one first.'); return; }
+  const media = currentMedia();
+  settings.printerTestedAt = Date.now();
+  settings.printerTestedOn = media.shortName + ' calibration';
+  saveSettings();
+  printRasterImage(sheet, media, {copies: 1, label: 'SnapBox calibration',
+                                  test: true, done: renderAdmin});
+}
+
+/* The side-by-side preview, redrawn whenever a setting moves.
+ *
+ * Cached on the options it was drawn for: the panel re-renders on every
+ * keystroke in an unrelated field, and re-running the pipeline over a
+ * full-size photograph each time made the whole panel feel broken.
+ */
+let calCache = {key: '', pair: null};
+function calibrationPreview(){
+  const source = calibrationSource();
+  if (!source) return null;
+  const tpl = activeLayout(), media = currentMedia();
+  const box = photoBoxDots(tpl, media);
+  const o = thermalOptions();
+  const key = [source.width, source.height, box.w, box.h,
+               o.dither, o.brightness, o.contrast, o.gamma, o.denoise,
+               o.faceLift, o.sharpen, o.sharpenRadius, o.threshold, o.invert,
+               settings.thermalWidthDots].join(':');
+  if (calCache.key === key && calCache.pair) return calCache.pair;
+  const pair = generatePrintPreview(source, Object.assign({}, o, {
+    widthDots: box.w, aspect: box.w / box.h, cropMode: 'face',
+    maxHeight: settings.thermalMaxHeightDots || 0,
+  }));
+  calCache = {key: key, pair: pair};
+  return pair;
+}
+
+/// Redraw the pair in place, without rebuilding the panel around it.
+function refreshCalibrationPreview(){
+  const host = document.querySelector('#cal-pair');
+  if (!host) return;
+  host.innerHTML = '';
+  paintCalibrationPreview(host.parentNode || document);
+}
+
+/// Put the two canvases into the panel. Called after the HTML is in the DOM,
+/// because a canvas cannot be serialised into a string of markup.
+function paintCalibrationPreview(root){
+  const host = root.querySelector('#cal-pair');
+  if (!host) return;
+  const pair = calibrationPreview();
+  if (!pair) return;
+  [['ORIGINAL', pair.original], ['AS PRINTED', pair.processed]].forEach(([name, canvas]) => {
+    const cell = document.createElement('figure');
+    cell.className = 'calcell';
+    canvas.className = 'calimg';
+    cell.appendChild(canvas);
+    const cap = document.createElement('figcaption');
+    cap.textContent = name;
+    cell.appendChild(cap);
+    host.appendChild(cell);
+  });
 }
 
 /* Render a pack: one sheet per photograph, rather than one sheet holding
@@ -3611,6 +3899,11 @@ function silentPrintingLikely(){
 }
 function submitPrint(){
   if (!session.sheet) { fail('Nothing to print — the layout came back empty.'); return; }
+  // Two taps on PRINT are one print. The guest is on their way to the
+  // thank-you screen a third of a second from now, which is long enough for
+  // a second tap to land, and on the thermal route a second job sent
+  // mid-raster corrupts the first.
+  if (printBusy()) return;
   // The sheet was drawn on the assumption the network was there. If that has
   // since turned out to be false, draw it again without the code: a sticker
   // carrying a QR that leads nowhere is worse than a sticker with none.
@@ -3632,8 +3925,6 @@ function submitPrint(){
    * ordinary sheet is a list of one, which keeps every route below on the
    * same path instead of growing a special case. */
   const sheets = session.pack && session.pack.length ? session.pack : [session.sheet];
-  const dataURLs = sheets.map(sheet => sheetDataURL(sheet, media));
-  const dataURL = dataURLs[0];
 
   setTimeout(() => {
     el('#print-status').textContent = silentPrintingLikely()
@@ -3641,10 +3932,10 @@ function submitPrint(){
       : 'Opening the print dialog…';
     setBars('#print-bars', 0.6);
     try {
-      if (NATIVE) { nativePrint(dataURLs, media); return; }
-      openPrintDialog(dataURLs, media, session.copies, () => {
-        setBars('#print-bars', 1);
-        finishPrinting();
+      printRasterImage(sheets, media, {
+        copies: session.copies,
+        label: 'SnapBox ' + media.shortName,
+        done: () => { setBars('#print-bars', 1); finishPrinting(); },
       });
     } catch (err) {
       fail(err && err.message ? err.message : String(err));
@@ -3652,22 +3943,17 @@ function submitPrint(){
   }, 350);
 }
 
-/* The tablet's two routes out.
+/* The page a sheet goes out on.
  *
- * Bluetooth is the silent one and the reason the Android build exists: the
- * sheet is dithered and sent as ESC/POS raster with no window, which is what
- * a kiosk needs and what no browser can do. The system dialog is the fallback
- * for an AirPrint/Mopria printer such as the SELPHY.
- *
- * Only the Bluetooth path reports back — `nativePrintResult` below. The
- * system dialog is the guest handing over to Android, and there is no useful
- * answer to wait for. */
-/* The page a sheet goes out on. A roll's page is the paper's *full* width —
- * 80 mm for a 72 mm image, 58 mm for a 48 mm one — with the image centred on
- * the part the head reaches, and as long as the image is. Used to be a fixed
- * 80 mm, which would have printed a 58 mm roll on an 80 mm page. */
+ * A roll's page is the paper's *full* width — 80 mm for a 72 mm image, 58 mm
+ * for a 48 mm one — with the image centred on the part the head reaches, and
+ * as long as the image is. Used to be a fixed 80 mm, which would have printed
+ * a 58 mm roll on an 80 mm page.
+ */
 const rollPaperMM = media => media.paperW || Math.round(media.w * 25.4 + 8);
 
+/// Page size in mils — thousandths of an inch — which is what both the
+/// Android print framework and the CSS @page rule below want.
 function printPaperMils(media, sheet){
   if (media.flow) {
     return {w: Math.round(rollPaperMM(media) / 25.4 * 1000),
@@ -3676,63 +3962,118 @@ function printPaperMils(media, sheet){
   return {w: Math.round(media.w * 1000), h: Math.round(media.h * 1000)};
 }
 
-function nativePrint(dataURLs, media){
-  const list = Array.isArray(dataURLs) ? dataURLs : [dataURLs];
-  const px = session.sheet;
-  if (settings.printMode === 'thermal') {
-    // One image at a time down the wire. A pack is sent sheet by sheet; the
-    // shell answers for each, and nativePrintResult only walks the guest on
-    // when the last one lands. See packPending.
-    packPending = list.length * Math.max(1, session.copies) - 1;
-    for (let c = 0; c < Math.max(1, session.copies); c++) {
-      list.forEach(u => NATIVE.thermalPrint(u, 1,
-                          Math.max(64, settings.thermalWidthDots | 0)));
-    }
-    return;                                  // finishes in nativePrintResult
-  }
-  if (settings.printMode === 'usb') {
-    /* TSPL describes a label, not a stream, so the printer has to be told how
-     * big one is or it does not know where to stop. A roll has no height of
-     * its own — the sheet is as long as its content — so the height is
-     * measured from the rendered sheet at the head's own resolution. */
-    const dots = Math.max(64, settings.thermalWidthDots | 0);
-    const widthMM = media.flow ? rollPaperMM(media) : media.w * 25.4;
-    const heightMM = media.flow
-      ? (px && px.height ? px.height / media.dpi * 25.4 : 150)
-      : media.h * 25.4;
-    packPending = list.length * Math.max(1, session.copies) - 1;
-    for (let c = 0; c < Math.max(1, session.copies); c++) {
-      list.forEach(u => NATIVE.usbPrint(u, 1, dots,
-                          +widthMM.toFixed(1), +heightMM.toFixed(1),
-                          +(settings.labelGapMM || 0)));
-    }
-    return;                                  // finishes in nativePrintResult
-  }
-  // Media sizes are in mils — thousandths of an inch. A roll has no page
-  // height, so its length is whatever the receipt came out.
-  const page = printPaperMils(media, px);
-  list.forEach(u => NATIVE.printSheet(u, session.copies, page.w, page.h,
-                                      'SnapBox ' + media.shortName));
-  setBars('#print-bars', 1);
-  finishPrinting();
+/* The one way out.
+ *
+ * Every print in the booth goes through here: a guest's sheet, a pack of
+ * stickers, a test print from the editor, a calibration sheet. Four routes
+ * sit behind it and the caller picks none of them — what it passes is a
+ * canvas, a media and what to do when the printer has answered.
+ *
+ *   BLUETOOTH (`thermal`) is the silent one and the reason the Android build
+ *   exists: the sheet is already one bit and goes out as ESC/POS raster with
+ *   no window, which is what a kiosk needs and what no browser can do.
+ *   USB (`usb`) is the same idea for a label printer plugged into the
+ *   tablet, in TSPL.
+ *   The SYSTEM SHEET (`dialog`) on Android hands over to the OS print
+ *   spooler for an AirPrint or Mopria printer such as the SELPHY.
+ *   A HIDDEN IFRAME is the browser's only route, and raises the browser's
+ *   own print dialog — except under kiosk-chrome.sh, where it does not.
+ *
+ * EVIDENCE. Only the first two can say whether anything was printed, and
+ * those two are the only ones this reports success for. The other two end at
+ * a handover: the sheet is in the OS's spooler or the browser's dialog, and
+ * what happens after that — a cancelled dialog, a printer with no paper, a
+ * queue that is paused — is invisible to a web page. So those routes say
+ * "sent", never "printed", and the booth's record of a working printer is
+ * the operator pressing TEST PRINT and seeing paper, which is what
+ * `printerTestedAt` is.
+ *
+ * ONE AT A TIME. A thermal job is answered per sheet, so a pack of four
+ * stickers is four answers and the caller is told once, when the last one
+ * lands. Walking a guest to the thank-you screen after the first of four
+ * would leave three stickers still coming out.
+ */
+let printJob = null;            // a job on a route that will answer
+let printHandoffUntil = 0;      // a job on a route that cannot
+
+/// True while a print is in flight. Two taps on PRINT must not become two
+/// prints, and on the thermal route a second job sent mid-raster corrupts
+/// the first — the printer has no job queue, just a byte stream.
+function printBusy(){
+  return !!printJob || Date.now() < printHandoffUntil;
 }
 
-/* Sheets still in flight on the one-at-a-time routes. The shell answers per
- * sheet, and walking a guest to the thank-you screen after the first of four
- * would leave three stickers still coming out. */
-let packPending = 0;
+function printRasterImage(sheets, media, o){
+  o = o || {};
+  const list = (Array.isArray(sheets) ? sheets : [sheets]).filter(Boolean);
+  if (!list.length) return 'empty';
+  if (printBusy()) { toast('A print is already on its way.'); return 'busy'; }
 
-/// Called by the Android shell when a Bluetooth job has finished or failed.
+  const copies = Math.max(1, o.copies || 1);
+  const dataURLs = list.map(sheet => sheetDataURL(sheet, media));
+  const done = o.done || (() => {});
+
+  if (NATIVE && (settings.printMode === 'thermal' || settings.printMode === 'usb')) {
+    printJob = {test: !!o.test, done: done, pending: list.length * copies};
+    const dots = Math.max(64, settings.thermalWidthDots | 0);
+    for (let c = 0; c < copies; c++) {
+      dataURLs.forEach(u => {
+        if (settings.printMode === 'thermal') {
+          NATIVE.thermalPrint(u, 1, dots);
+        } else {
+          /* TSPL describes a label, not a stream, so the printer has to be
+           * told how big one is or it does not know where to stop. A roll has
+           * no height of its own — the sheet is as long as its content — so
+           * the height is measured from the rendered sheet at the head's own
+           * resolution. */
+          const widthMM = media.flow ? rollPaperMM(media) : media.w * 25.4;
+          const px = list[0];
+          const heightMM = media.flow
+            ? (px && px.height ? px.height / media.dpi * 25.4 : 150)
+            : media.h * 25.4;
+          NATIVE.usbPrint(u, 1, dots, +widthMM.toFixed(1), +heightMM.toFixed(1),
+                          +(settings.labelGapMM || 0));
+        }
+      });
+    }
+    return 'pending';                        // finishes in nativePrintResult
+  }
+
+  if (NATIVE) {
+    // Media sizes are in mils — thousandths of an inch. A roll has no page
+    // height, so its length is whatever the sheet came out.
+    const page = printPaperMils(media, list[0]);
+    dataURLs.forEach(u => NATIVE.printSheet(u, copies, page.w, page.h,
+                                            o.label || 'SnapBox ' + media.shortName));
+    printHandoffUntil = Date.now() + 1500;
+    done();
+    return 'sent';
+  }
+
+  printHandoffUntil = Date.now() + 1500;
+  openPrintDialog(dataURLs, media, copies, done);
+  return 'sent';
+}
+
+/// Called by the Android shell when a Bluetooth or USB job has finished or
+/// failed. The only place in the booth that can honestly say "printed".
 function nativePrintResult(ok, message){
   // A test print from the layout editor is not a guest's print: it must not
   // advance the sheet counter or walk anyone to the thank-you screen.
   if (typeof editorPrintResult === 'function' && editorPrintResult(ok, message)) return;
-  // One failure fails the whole pack: half a set of stickers is worse than a
+  const job = printJob;
+  // One failure fails the whole job: half a set of stickers is worse than a
   // clear error, and the rest are already queued behind it.
-  if (!ok) { packPending = 0; fail(message || 'The printer did not answer.'); return; }
-  if (packPending > 0) { packPending--; return; }
-  setBars('#print-bars', 1);
-  finishPrinting();
+  if (!ok) {
+    printJob = null;
+    if (job && job.test) { toast(message || 'The printer did not answer.'); renderAdmin(); }
+    else fail(message || 'The printer did not answer.');
+    return;
+  }
+  if (!job) { setBars('#print-bars', 1); finishPrinting(); return; }
+  if (--job.pending > 0) return;
+  printJob = null;
+  job.done();
 }
 
 /* The @page and image rules for one sheet, shared by both routes below.
@@ -4039,6 +4380,11 @@ async function renderAdmin(){
 
   camRows.push(
     row('MIRROR PREVIEW', seg('mirrorPreview', [[true, 'ON'], [false, 'OFF']], settings.mirrorPreview)),
+    row('CAPTURE SIZE', seg('captureSize', [['max', 'MAXIMUM'], ['hd', 'HD 1080']], settings.captureSize)),
+    row('CAMERA LOCK', seg('lockCamera', [[true, 'ON'], [false, 'OFF']], settings.lockCamera)),
+    row('SETTLE', num('cameraSettleMs', 0, 2000, 100, 'ms')),
+    note('info', cameraLockNote()),
+    note('info', 'CAPTURE SIZE MAXIMUM asks the open camera for its largest mode instead of taking the browser\u2019s default, which can be VGA on a camera that also offers 4K. It costs nothing on the preview — the extra pixels are spent on the photograph, where a one-bit print needs every one of them. Drop to HD 1080 if the tablet feels slow.' + (cameraState.width ? ' Open now at ' + cameraState.width + 'x' + cameraState.height + '.' : '')),
     row('AUTO EXPOSURE', seg('autoExposure', [[true, 'ON'], [false, 'OFF']], settings.autoExposure)),
     row('EXPOSURE TARGET', num('exposureTarget', 100, 200, 5, '')),
     row('EXPOSURE AMOUNT', num('exposureStrength', 0, 1, 0.1, '')),
@@ -4140,27 +4486,8 @@ async function renderAdmin(){
   ]));
 
   if (currentMedia().thermal) {
-    const mode = settings.thermalDither || 'floyd';
-    parts.push(section('THERMAL IMAGE', 'star', [
-      row('DITHER', seg('thermalDither',
-        [['adaptive', 'ADAPTIVE'], ['floyd', 'DIFFUSION'],
-         ['ordered', 'SCREEN'], ['none', 'OFF']], mode)),
-      row('CONTRAST', num('thermalContrast', 0.6, 2.5, 0.05, '')),
-      row('BRIGHTNESS', num('thermalBrightness', -40, 40, 4, '')),
-      row('FACE LIFT', num('thermalFaceLift', 0, 1, 0.05, '')),
-      row('SHARPEN', num('thermalSharpen', 0, 2, 0.2, '')),
-      note(mode === 'none' ? 'warn' : 'info',
-        mode === 'none'
-          ? 'OFF sends the printer 8-bit grey and lets its driver decide which dots to burn. Most drivers simply threshold — every tone above a level goes white, everything below goes black — and a face becomes two flat shapes. This is what the booth did before; keep it only if your printer dithers better than this does.'
-          : mode === 'ordered'
-          ? 'SCREEN uses a fixed 4x4 pattern. Coarser than the other two on a face, but it never smears, so large flat areas stay even. Worth trying if you see worm-like streaks on plain backgrounds.'
-          : mode === 'floyd'
-          ? 'DIFFUSION judges every dot against the same mid-grey and pushes the error into its neighbours. Even and predictable, but a region that sits well below mid-grey has every dot fall the same way and goes solid.'
-          : 'ADAPTIVE is DIFFUSION with the threshold following the local average. On test targets it lifts the contrast of features inside a shadow a little, and costs a little fine detail and a little more ink — the two modes measured close enough that the honest advice is to print one of each and keep whichever you prefer. The large gain over a driver\u2019s own halftoning is in both.'),
-      note('info', 'The full path a photograph takes: upscale, greyscale, contrast, lift local shadow, sharpen, dither. FACE LIFT raises whatever sits in local shadow — at a booth that is usually a face, lit from one side in front of a brighter room. It is not face detection: no browser here offers one, and carrying a model would cost megabytes in an app whose point is working offline. It reads the local average instead, which lightens shadowed cheeks and eye sockets without flattening the rest of the sheet. Measured, its effect is modest; set it to 0 if shadows look washed out.'),
-      note('info', 'CONTRAST and BRIGHTNESS are applied before dithering, because afterwards there is nothing continuous left to adjust. Thermal paper darkens as heat spreads around each dot, so prints come out heavier than the screen suggests — raise BRIGHTNESS if faces are filling in, raise CONTRAST if the whole thing looks grey and flat. SHARPEN puts back the fine edges that error diffusion smears; set it to 0 if text starts to look gritty.'),
-      note('info', 'The review and confirm screens show the dithered sheet, so what a guest approves is exactly what burns, dot for dot.'),
-    ]));
+    parts.push(thermalImageSection());
+    parts.push(calibrationSection());
   }
 
   parts.push(section('RECEIPT', 'printer', [
@@ -4189,6 +4516,115 @@ async function renderAdmin(){
   body.innerHTML = parts.join('');
   paintIcons(body); paintPixelText(body);
   wireAdmin(body);
+  // A canvas cannot be written into a string of markup, so the side-by-side
+  // preview is appended after the panel exists.
+  paintCalibrationPreview(body);
+}
+
+/* THERMAL IMAGE — the pipeline, as controls.
+ *
+ * Ordered the way an operator works: look at the preview, pick a halftone,
+ * then move the three tone controls, then the two sharpening ones. The notes
+ * under each group say what the control does to the print rather than what it
+ * does to the pixels, because the thing being judged is paper.
+ */
+function thermalImageSection(){
+  const mode = settings.thermalDither || 'atkinson';
+  const media = currentMedia();
+  const rows = [];
+
+  rows.push('<div class="calpair" id="cal-pair"></div>');
+  rows.push(note(calibrationSource() ? 'info' : 'warn', calibrationSource()
+    ? 'The photograph in hand, at the exact size and shape it prints: the frame on the left, the dots that will burn on the right. Both halves are at the print\u2019s own scale and are not resized to fit — a dither looks fine at every size except its own, which is the one that matters.'
+    : 'Take a photograph and come back: the preview needs a real frame. Sample faces are used until then.'));
+
+  rows.push(row('DITHER', seg('thermalDither',
+    [['atkinson', 'ATKINSON'], ['adaptive', 'ADAPTIVE'], ['floyd', 'DIFFUSION'],
+     ['ordered', 'SCREEN'], ['threshold', 'HARD'], ['none', 'OFF']], mode)));
+  rows.push(note(mode === 'none' || mode === 'threshold' ? 'warn' : 'info',
+    mode === 'none'
+      ? 'OFF sends the printer 8-bit grey and lets its driver decide which dots to burn. Most drivers simply threshold — every tone above a level goes white, everything below goes black — and a face becomes two flat shapes. This is what the booth did before; keep it only if your printer dithers better than this does.'
+      : mode === 'threshold'
+      ? 'HARD is a single cut level, and on a face it is the wrong answer: the features fall on whichever side of the level they happen to sit and no amount of brightness puts them back. It is here for line art — a logo, a barcode, a scanned signature — and as the control on the calibration sheet, where a thresholded face next to a dithered one shows what the dithering is buying.'
+      : mode === 'ordered'
+      ? 'SCREEN uses a fixed 4x4 pattern. Coarser than the diffusions on a face, but it never smears, so large flat areas stay even. Worth trying if you see worm-like streaks on plain backgrounds.'
+      : mode === 'floyd'
+      ? 'DIFFUSION judges every dot against the same mid-grey and pushes all of the error into its neighbours. The most tonally accurate of these on an evenly lit frame — and the one that fails worst on a dark one, because a region sitting well below mid-grey has every dot fall the same way and goes solid.'
+      : mode === 'adaptive'
+      ? 'ADAPTIVE is DIFFUSION with the threshold following the local average, so a feature inside a shadow is judged against that shadow rather than against mid-grey. Costs a little fine detail and a little more ink.'
+      : 'ATKINSON throws a quarter of the error away instead of passing all of it on, so a dark region cannot snowball into solid black and a bright one cannot wash out. Flatter midtones, and faces that keep their features at both ends of the scale — which is why it is the default here. Thermal paper darkens as heat spreads around each dot, so a diffusion that refuses to accumulate error is closer to what the paper actually does.'));
+
+  if (mode === 'threshold') {
+    rows.push(row('CUT LEVEL', num('thermalThreshold', 32, 224, 8, '')));
+  }
+
+  rows.push(row('BRIGHTNESS', num('thermalBrightness', -40, 60, 5, '')));
+  rows.push(row('CONTRAST', num('thermalContrast', 0.6, 2.5, 0.05, '')));
+  rows.push(row('GAMMA', num('thermalGamma', 0.5, 2.0, 0.05, '')));
+  rows.push(note('info', 'Three different controls, and which one to reach for depends on what is wrong. GAMMA is the one to try first: it is a curve, so it lifts the midtones — where a thermal print always fails, because heat spreads around every dot and darkens them — and leaves pure black and pure white exactly where they are. BRIGHTNESS adds a constant and moves the ends too, so pushed hard it flattens them. CONTRAST pulls the ends apart and clips both. Faces filling in: raise GAMMA. Whole print grey and flat: raise CONTRAST. Whole print too dark: raise BRIGHTNESS.'));
+
+  rows.push(row('FACE LIFT', num('thermalFaceLift', 0, 1, 0.05, '')));
+  rows.push(row('NOISE', num('thermalDenoise', 0, 1, 0.1, '')));
+  rows.push(note('info', 'FACE LIFT raises whatever sits in local shadow — at a booth that is usually a face, lit from one side in front of a brighter room. It is not face detection: no browser here offers one, and carrying a model would cost megabytes in an app whose point is working offline. It reads the local average instead, which lightens shadowed cheeks and eye sockets without flattening the rest of the sheet. Measured, its effect is modest; set it to 0 if shadows look washed out. NOISE is a 3x3 median before the tone work, and is off for a reason: on a clean frame it costs eyelashes and hair texture. Raise it to about 0.3 only in a dim venue, where the camera has pushed its gain up and the dither is turning sensor grain into burned dots.'));
+
+  rows.push(row('SHARPEN', num('thermalSharpen', 0, 2, 0.1, '')));
+  rows.push(row('RADIUS', num('thermalSharpenRadius', 0.3, 2, 0.1, 'px')));
+  rows.push(note('info', 'Sharpening runs after the photograph has been resized to printer dots and before the dither, so it builds edges the head can actually place. RADIUS is in printed dots: about one dot at 203dpi is 0.7 to 1.0, and wider than that shows as a grey ring around every edge. Set SHARPEN to 0 if text or eyelashes start to look gritty.'));
+
+  rows.push(row('INVERT', seg('thermalInvert', [[false, 'OFF'], [true, 'ON']], settings.thermalInvert)));
+  rows.push(note(settings.thermalInvert ? 'warn' : 'info', settings.thermalInvert
+    ? 'INVERT is on: every dot is swapped on the way out. This is only ever right for a printer that reads a set bit as \u201cdo not burn\u201d and otherwise prints a negative. If prints are coming out as photographic negatives, this is the fix; if they are not, turn it off.'
+    : 'INVERT swaps black for white on the way out. A wiring fix, not a look — turn it on only if the printer produces a negative.'));
+
+  rows.push(note('info', 'The whole path a photograph takes: crop, noise, resize to printer dots, greyscale, brightness, contrast, gamma, lift local shadow, sharpen, dither. Nothing is resized or re-dithered after that, on any route. The review and confirm screens show the dithered sheet, so what a guest approves is exactly what burns, dot for dot.'));
+
+  if (media.flow) {
+    rows.push(row('MAX LENGTH', num('thermalMaxHeightDots', 0, 6000, 400, ' dots')));
+    rows.push(note('info', 'The tallest sheet to send, in printer dots — 0 for no limit, which is the default. A roll has no page length so a long receipt is legal, but a sheet taller than the printer\u2019s own raster buffer is not, and some printers answer that by truncating it without saying so. A sheet over this is scaled down to fit before the dither, never after.'));
+  }
+  return section('THERMAL IMAGE', 'star', rows);
+}
+
+/* The head width, and the test sheet.
+ *
+ * Separate from THERMAL IMAGE because it is a fact about the printer rather
+ * than a judgement about the picture, and because it is the one setting here
+ * that is wrong silently: a sheet wider than the head is clipped or shrunk
+ * by the printer with no error anywhere.
+ */
+function calibrationSection(){
+  const media = currentMedia();
+  const rows = [];
+  const presets = [[832, '104MM / 832'], [576, '80MM / 576'],
+                   [384, '58MM / 384'], [203, '25MM / 203']];
+  rows.push(row('HEAD WIDTH', seg('thermalWidthDots', presets, settings.thermalWidthDots)));
+  rows.push(row('OR TYPE IT', '<input class="afield" data-dots="thermalWidthDots" ' +
+    'inputmode="numeric" placeholder="dots across" value="' +
+    (settings.thermalWidthDots | 0) + '" style="width:180px;max-width:100%">'));
+  rows.push(note('info', 'The number of dots across the printer\u2019s head, from its own specification. The presets are conventions, not a rule: 576 dots is 80mm at 203dpi and most 80mm printers have exactly that, but an 80mm printer with a 640-dot head exists, and a 576-dot sheet sent to one prints narrow with a white strip down the side. If prints come out narrower or wider than the paper, this is the number to change.'));
+
+  const paperDots = mediaPixels(media).w;
+  const headDots = settings.thermalWidthDots | 0;
+  if (media.thermal && paperDots > headDots) {
+    rows.push(note('warn', media.shortName + ' renders ' + paperDots +
+      ' dots wide but HEAD WIDTH is set to ' + headDots + '. The extra ' +
+      (paperDots - headDots) + ' will be scaled or cut off by the printer, ' +
+      'silently. Raise HEAD WIDTH to match the printer, or pick a narrower paper.'));
+  }
+
+  rows.push(row('SAMPLES', seg('calibrationSamples', [[1, '1'], [2, '2'], [4, '4']],
+    settings.calibrationSamples)));
+  rows.push(row('', '<button class="btn solid" data-act="cal-print" style="min-width:260px">' +
+    '<span class="px" data-cell="4">PRINT TEST SHEET</span></button>'));
+  rows.push(note('info', 'One sheet, six labelled variants of the same photograph, and the settings they share printed across the top: the four halftones, the current settings with GAMMA raised a quarter, and a hard threshold as the control. Pick the cell that looks best on the paper and set the controls above to match it. SAMPLES prints the same six for more than one photograph, which is worth doing once — a single face and a group shot fail differently on one bit.'));
+
+  const when = settings.printerTestedAt
+    ? new Date(settings.printerTestedAt).toLocaleString() : '';
+  rows.push(note(when ? 'info' : 'warn', when
+    ? 'Last test print: ' + when + ' on ' + (settings.printerTestedOn || 'unknown paper') +
+      '. That is a record of the booth sending a job, not of paper coming out — a web page cannot be told whether a printer actually printed, so the only real confirmation is the one you saw.'
+    : 'No test print has been sent from this device. Send one before an event: the booth cannot detect a printer, so this is the only way to know the route works.'));
+  return section('PRINTER CALIBRATION', 'printer', rows);
 }
 
 /* Driving a USB camera the tablet refuses to share.
@@ -4254,25 +4690,12 @@ function thermalSection(){
     rows.push(row('PRINTER',
       '<div class="seg"><button class="on">NONE PAIRED</button></div>'));
   }
-  // 832 is the head of every 4-inch label printer at 203 dpi — 104 mm of
-  // dots — which is the class the waybill papers above are cut for.
-  rows.push(row('HEAD WIDTH', seg('thermalWidthDots',
-    [[832, '104MM / 832'], [576, '80MM / 576'], [384, '58MM / 384']],
-    settings.thermalWidthDots)));
+  // HEAD WIDTH used to be here and now lives in PRINTER CALIBRATION, with
+  // the test sheet and the paper-wider-than-the-head warning: it is one
+  // number and it was being asked for in two places.
   rows.push(note(devices.length ? 'info' : 'warn', devices.length
-    ? 'Paired Bluetooth devices. Pick the printer, set HEAD WIDTH to match it, and set PAPER above to the paper actually loaded. The sheet is dithered to 1 bit here, so what you see on the confirm screen is what burns.'
+    ? 'Paired Bluetooth devices. Pick the printer, then set HEAD WIDTH in PRINTER CALIBRATION to match it and PAPER above to the paper actually loaded. The sheet is dithered to 1 bit here, so what you see on the confirm screen is what burns.'
     : 'No paired Bluetooth devices. Pair the printer in Android Settings › Connected devices first, then come back — the booth never scans for radios in front of a guest.'));
-  // Paper wider than the head is not an error anywhere — it is a silent clip
-  // or a silent shrink. Catching it here costs one comparison.
-  const paperDots = mediaPixels(currentMedia()).w;
-  const headDots = settings.thermalWidthDots | 0;
-  if (paperDots > headDots) {
-    rows.push(note('warn',
-      currentMedia().shortName + ' renders ' + paperDots + ' dots wide but HEAD ' +
-      'WIDTH is set to ' + headDots + '. The extra ' + (paperDots - headDots) +
-      ' will be scaled or cut off. Raise HEAD WIDTH to match the printer, or ' +
-      'pick a narrower paper.'));
-  }
   if (currentMedia().thermal && !currentMedia().flow) rows.push(note('warn', labelPrinterNote()));
   return section('BLUETOOTH PRINTER', 'printer', rows);
 }
@@ -4324,14 +4747,13 @@ function testPrint(){
     renderSheet(photos, tpl, media, branding(tpl), 1,
                 {mono: media.thermal || settings.photoTone !== 'colour'}),
     media);
-  const dataURL = sheetDataURL(sheet, media);
-
   settings.printerTestedAt = Date.now();
   settings.printerTestedOn = media.shortName;
   saveSettings();
 
   // The sheet counter is a record of guests served, and a test is not one.
-  openPrintDialog(dataURL, media, 1, () => { renderAdmin(); });
+  printRasterImage(sheet, media, {copies: 1, test: true,
+                                  label: 'SnapBox test', done: renderAdmin});
 }
 
 /// A brief message, on the tablet through the shell and otherwise in the
@@ -4624,6 +5046,7 @@ function wireAdmin(root){
       if (value === 'true') value = true;
       else if (value === 'false') value = false;
       else if (key === 'thermalWidthDots') value = parseInt(value, 10) || 576;
+      else if (key === 'calibrationSamples') value = parseInt(value, 10) || 1;
       if (key === 'thermalDevice') {
         // Which printer is paired is the OS's business, not the booth's.
         try { NATIVE.selectThermalDevice(String(value)); } catch {}
@@ -4650,6 +5073,25 @@ function wireAdmin(root){
     });
   });
 
+  /* A typed number, for the one setting whose right value is on a printer's
+   * spec sheet rather than in a list. Committed on blur and on Enter rather
+   * than per keystroke: typing "576" passes through 5 and 57, and re-rendering
+   * every sheet in the booth at a head width of 5 dots is a long wait for
+   * nothing. */
+  root.querySelectorAll('[data-dots]').forEach(input => {
+    const commit = () => {
+      const key = input.dataset.dots;
+      const n = parseInt(input.value, 10);
+      if (!n || n < 64 || n > 4096) { input.value = settings[key] | 0; return; }
+      settings[key] = n;
+      saveSettings();
+      afterSettingChange(key);
+      renderAdmin();
+    };
+    input.addEventListener('change', commit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); });
+  });
+
   root.querySelectorAll('[data-field]').forEach(input => {
     input.addEventListener('input', () => {
       settings[input.dataset.field] = input.value;
@@ -4659,6 +5101,14 @@ function wireAdmin(root){
   });
 }
 
+/* Settings that change what comes out of the printer. Any of them moving
+ * means the sheet in hand is stale and the preview beside the control is
+ * lying, so both are redrawn. */
+const THERMAL_KEYS = ['thermalDither', 'thermalContrast', 'thermalBrightness',
+  'thermalGamma', 'thermalDenoise', 'thermalSharpen', 'thermalSharpenRadius',
+  'thermalFaceLift', 'thermalThreshold', 'thermalInvert', 'thermalWidthDots',
+  'thermalMaxHeightDots'];
+
 function afterSettingChange(key){
   // A changed code is a different set of layouts, so the next pull starts
   // from the beginning rather than from this device's old cursor.
@@ -4666,14 +5116,23 @@ function afterSettingChange(key){
   if (key === 'syncAuto') syncSoon();
   if (key === 'mirrorPreview') applyMirror();
   if (key === 'flashEnabled' || key === 'autoExposure') renderAdmin();
+  // Both of these are properties of the open track, so they are applied to
+  // the camera in hand rather than waiting for the next session.
+  if (key === 'captureSize' || key === 'lockCamera' || key === 'cameraSettleMs') {
+    prepareCamera().then(renderAdmin);
+  }
   if (key === 'printMode') renderAdmin();
   // The thermal controls only mean anything against a picture, so redraw the
   // one in hand and refresh the note under the switch.
-  if (key === 'thermalDither' || key === 'thermalContrast' ||
-      key === 'thermalBrightness' || key === 'thermalSharpen' ||
-      key === 'thermalFaceLift') {
+  if (THERMAL_KEYS.indexOf(key) >= 0) {
     if (session.photos && session.photos.some(Boolean) && session.layout) compose();
-    if (key === 'thermalDither') renderAdmin();
+    // Every one of these changes the preview, which is the whole reason the
+    // preview is there. Only three of them change which rows exist, and
+    // rebuilding the panel on a BRIGHTNESS tap would throw the operator's
+    // scroll position away mid-adjustment.
+    if (key === 'thermalDither' || key === 'thermalInvert' ||
+        key === 'thermalWidthDots') renderAdmin();
+    else refreshCalibrationPreview();
   }
   if (key === 'cameraId') {
     // Reopen at once rather than waiting for the next guest: whatever asking
@@ -4983,6 +5442,7 @@ const ACTIONS = {
   'save-png': savePNG,
   'camera-rescan': rescanCameras,
   'printer-test': testPrint,
+  'cal-print': printCalibrationSheet,
   'sync-now': () => syncNow(false),
   'sync-new-code': newSyncCodeFromAdmin,
   'share-test': testShare,
@@ -5177,8 +5637,13 @@ window.booth = {session, settings, LAYOUTS, MEDIA, renderSheet, compose,
                 IPADOS, HOLD_CAMERA, isExternalCamera, listCameras,
                 feedDescription, cameraHeld, cameraHoldState, permissionNote,
                 recoverCameraIfDropped,
+                cameraState, prepareCamera, cameraReady, cameraLockNote,
+                maximiseCapture, settleAndLock,
                 printPageCSS, printFromDocument, rescanCameras,
-                thermalize, sheetDataURL, renderPack, contactSheet,
+                thermalize, thermalOptions, sheetDataURL, renderPack, contactSheet,
+                printRasterImage, printBusy, invertCanvas,
+                photoBoxDots, calibrationSource, calibrationVariants,
+                calibrationSheet, calibrationPreview, printCalibrationSheet,
                 liftShadows, localMean, smoothing,
                 slotRects,
                 raiseFlash, dropFlash, normaliseExposure, testPrint,

@@ -410,6 +410,35 @@ body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:none;
 .num button:active{background:var(--ink);color:var(--paper)}
 .num .v{width:110px;height:50px;display:grid;place-items:center;font-family:var(--mono);font-size:15px;
         border-left:var(--rule-thin) solid var(--ink);border-right:var(--rule-thin) solid var(--ink)}
+/* The calibration pair: the frame as the camera gave it, and the dots that
+   will burn.
+
+   `image-rendering:pixelated` is the whole point of this block. The two
+   canvases are at the print's own pixel size and the browser will fit them to
+   the column, and a smooth fit averages neighbouring dots back into greys the
+   printer cannot produce — so the preview would show a softer, nicer picture
+   than the paper can ever give. Nearest-neighbour keeps every dot a dot, which
+   is honest at any zoom.
+
+   Both halves share one grid track width, so they are compared at the same
+   scale rather than each fitted to its own content. */
+.calpair{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;
+         margin:0 0 4px;align-items:start}
+.calcell{margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+/* Capped by height as well as width. A receipt photograph is taller than it
+   is wide, and at the full column width two of them pushed every control in
+   the section off the bottom of the panel — an operator adjusting BRIGHTNESS
+   has to be able to see the preview and the control at the same time. */
+.calcell>.calimg{display:block;width:auto;max-width:100%;height:auto;
+                 max-height:30vh;margin:0 auto;
+                 border:var(--rule-thin) solid var(--ink);
+                 background:var(--paper);image-rendering:pixelated}
+.calcell>figcaption{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+                    color:var(--dim)}
+/* A receipt photograph is taller than it is wide and two of them side by side
+   run off the bottom of a phone-width panel. One above the other there. */
+@media (max-width:560px){ .calpair{grid-template-columns:1fr} }
+
 .note{display:flex;gap:10px;align-items:flex-start;font-family:var(--mono);font-size:12.5px;
       line-height:1.7;color:var(--dim)}
 .swatch{width:14px;flex:none;align-self:stretch}
