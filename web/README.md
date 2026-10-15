@@ -213,9 +213,9 @@ brightness up for an event.
 ## Getting detail onto thermal paper
 
 The instinct is to raise the capture resolution. That is not where the detail
-goes. A 100 x 150 label is 799 dots wide and the camera is asked for 1920 —
-**2.4 source pixels per printed dot**, more than twice what is needed. Raising
-it further changes nothing on paper.
+goes. A 100 x 150 label is 799 dots wide and the camera is asked for its
+largest mode — on a 1080p webcam that is **2.4 source pixels per printed dot**,
+more than twice what is needed. Raising it further changes nothing on paper.
 
 What decides how much of a face survives is *which dots get burned*. A thermal
 head burns a dot or it does not; there is no grey. The booth used to send 8-bit
@@ -223,20 +223,82 @@ grey and let the printer's driver choose, and vendor drivers generally
 threshold: every tone above some level goes white, everything below goes black,
 and a face becomes two flat shapes.
 
-The booth now does that conversion itself, under **Admin → THERMAL IMAGE**.
-The full path a photograph takes is **upscale → greyscale → contrast → lift
-local shadow → sharpen → dither**, in that order: greyscale first because
-everything after works on one channel, contrast while the tone is still
-continuous, shadow lifting after contrast because contrast is what pushes
-faces into shadow, sharpening before the dither because sharpening a dithered
-image only sharpens dot noise, and dithering last because nothing can be
-adjusted once there are two values left.
+The booth does that conversion itself. The pipeline lives in **`imaging.js`**,
+which knows nothing about the booth — no screens, no settings, no printers,
+just pixels — and is driven from **Admin → THERMAL IMAGE**.
 
-Upscaling happens where the photograph is drawn into the sheet, with
-high-quality resampling on the canvas context. It matters most for a
-VGA-class camera such as the Charmera, which is genuinely *enlarged* into a
-label slot: measured at **+3.3% gradient energy** over the browser default
-when upscaling 640x480 into a 799-wide slot. Small, but free.
+### The pipeline, in order
+
+```
+capture at the camera's largest mode     captureImage
+  -> crop to the slot's shape            cropPortrait
+  -> noise reduction, if asked           reduceNoise
+  -> resize to the printable width       resizeForPrinter   (high quality)
+  -> luminance greyscale                 convertToGrayscale
+  -> contrast / brightness / gamma       adjustContrast / Brightness / Gamma
+  -> lift local shadow                   liftShadows
+  -> sharpen                             sharpenImage
+  -> dither to one bit                   apply*Dithering / applyThreshold
+  -> preview                             generatePrintPreview
+  -> send, unscaled and unredithered     printRasterImage
+```
+
+Two things about that order are not negotiable.
+
+**Resize before sharpening.** Sharpening and then resampling throws the
+sharpened edges away and leaves the halo. Resizing first means the sharpening
+lands on the dots that will actually burn.
+
+**Dither last, and never touch the result.** A dither is a field of single
+black and white dots. Rescaling it averages neighbours back into greys the head
+cannot print, and JPEG rings around every dot — measured on a label sheet, 2
+levels became 20 through JPEG at quality 0.95. Once the image is one bit, the
+only legal operations are "send" and "show".
+
+In the booth the resize happens where a photograph is drawn into the sheet
+(`smoothing` in `booth.js`) and the tone-and-dither tail happens in
+`thermalize` at compose time, so the sheet a guest approves on the review
+screen is the exact one that burns.
+
+Upscaling matters most for a VGA-class camera such as the Charmera, which is
+genuinely *enlarged* into a label slot: measured at **+3.3% gradient energy**
+over the browser default when upscaling 640x480 into a 799-wide slot. Small,
+but free. `resizeForPrinter` halves repeatedly on the way down rather than
+taking one bilinear step, because a single pass from 1920 to 576 reads only 2
+of every 3.3 source pixels — fine detail is not averaged, it is skipped.
+
+### The halftones
+
+| `DITHER` | What it does |
+|---|---|
+| `ATKINSON` | **The default.** Passes on six eighths of the error and throws a quarter away, so a dark region cannot snowball into solid black and a bright one cannot wash out. Flatter midtones; faces that keep their features at both ends of the scale. Thermal paper darkens as heat spreads around each dot, so a diffusion that refuses to accumulate error is closer to what the paper does |
+| `ADAPTIVE` | Diffusion with the threshold following the local average, so a feature inside a shadow is judged against that shadow. Costs some fine detail and more ink |
+| `DIFFUSION` | Floyd–Steinberg. The most tonally accurate on an evenly lit frame, and the one that fails worst on a dark one |
+| `SCREEN` | Ordered 4x4 Bayer. Coarser on a face, but it never smears, so flat areas stay even |
+| `HARD` | A single cut level, with `CUT LEVEL` to set it. For line art only — a logo, a barcode, a scanned signature — and as the control on the test sheet. **Wrong for faces** |
+| `OFF` | Hands 8-bit grey to the driver, the old behaviour. The sheet is sent exactly as drawn |
+
+All five diffusions scan boustrophedon — left to right, then right to left —
+because always scanning the same way walks the error across the page and leaves
+a visible diagonal grain.
+
+### The tone controls
+
+| Control | What it does |
+|---|---|
+| `BRIGHTNESS` | Adds a constant. Moves the ends of the scale too, so pushed hard it flattens them. For "the whole print is too dark" |
+| `CONTRAST` | Scales around mid-grey, pulling both ends apart and clipping them. For "it looks grey and flat" |
+| `GAMMA` | A curve: moves the midtones and leaves pure black and pure white where they are. **The one to try first** — what goes wrong on thermal paper is almost always the midtones, and gamma is the only one of the three that lifts them without lifting the blacks or crushing the whites |
+| `FACE LIFT` | Raises whatever sits in local shadow |
+| `NOISE` | 3x3 median before the tone work. **Off by default** — on a clean frame it costs eyelashes and hair texture. Worth about 0.3 in a dim venue, where sensor grain would otherwise become a field of burned dots |
+| `SHARPEN` / `RADIUS` | Unsharp masking after the resize and before the dither. `RADIUS` is in printed dots: one dot at 203dpi is about 0.7–1.0, and wider shows as a grey ring around every edge |
+| `INVERT` | Swaps black for white on the way out. A **wiring fix, not a look** — only ever right for a printer that reads a set bit as "do not burn" and otherwise prints a negative |
+| `MAX LENGTH` | Rolls only. The tallest sheet to send, in dots; 0 for no limit. A sheet taller than the printer's raster buffer can be truncated silently, so anything over this is scaled down **before** the dither |
+
+Contrast is applied before brightness, and brightness is the step that closes
+the range back to 0–255. That order is what makes `BRIGHTNESS` mean a literal
+number of levels: the other way round, contrast multiplies the offset too, and
+"+15" would become +20 at a contrast of 1.35.
 
 `FACE LIFT` is the "brighten faces" step and it is **not face detection**. No
 browser here offers one — Safari has no Shape Detection API and Chrome has
@@ -245,45 +307,126 @@ whose point is working offline. It reads the *local* average brightness
 instead and lifts whatever sits in local shadow, which at a booth is usually a
 face, with a headroom term so highlights do not wash out.
 
-**What the measurements actually showed.** The enormous gain is dithering at
-all, versus letting a driver threshold. Within dithering the differences are
-small and not all one way: against a synthetic portrait with a deep shadow
-side, `ADAPTIVE` gave the best printed contrast for features inside the shadow
-(7.8 vs 6.2 for the untuned baseline) but the *worst* fine-detail retention
-(97.1% of windows carrying detail, vs 99.8%) and the most ink. `ADAPTIVE` is
-the default because it was asked for, not because it won; print one of each
-and keep whichever you prefer.
+### Calibrating it
 
-Controls:
+Every one of those numbers is a guess until it has been printed. The printer's
+dot spread, the paper's sensitivity and the room's light are all unknown to the
+booth, and they move — a different roll of paper is a different calibration.
+So **Admin → THERMAL IMAGE** does two things rather than describing settings
+and hoping.
 
-| Control | What it does |
-|---|---|
-| `DITHER` | `DIFFUSION` (Floyd–Steinberg), `SCREEN` (ordered 4x4 Bayer), or `OFF` (the old behaviour — hand grey to the driver) |
-| `CONTRAST` | Midtone contrast **before** dithering. Thermal compresses the ends of the scale |
-| `BRIGHTNESS` | Lightness before dithering. Heat spreads around each dot, so prints come out heavier than the screen |
-| `SHARPEN` | Unsharp masking before dithering. Error diffusion smears fine edges; this puts them back. 0 turns it off |
+**The side-by-side preview** at the head of the section shows the photograph in
+hand twice, at the exact pixel size and shape it will print: the frame on the
+left, the actual dots on the right. Neither half is resized to fit — a dither
+looks fine at every size except its own — and the right half runs the same
+`processForPrint` the printer gets. It redraws as each control moves.
 
-Order matters and is fixed: tone, then sharpening, then dithering. Sharpening
-after a dither would only sharpen dot noise, and tone applied afterwards would
-have nothing continuous left to work on.
+**The test sheet**, under PRINTER CALIBRATION, prints six labelled variants of
+the same photograph with the shared settings stamped across the top: the four
+halftones, the current settings with `GAMMA` raised a quarter, and a hard
+threshold as the control. Pick the cell that looks best *on the paper* and set
+the controls to match. `SAMPLES` repeats the six for more than one photograph,
+which is worth doing once — a single face and a group shot fail differently on
+one bit.
 
-Error diffusion takes the nearest of black or white for each dot and pushes the
-error — how wrong that choice was — into the neighbours not yet decided, so a
-midtone becomes a texture that reads as grey at arm's length. The printer is
-then handed pure black and white with nothing left to decide.
+The labels on that sheet are thresholded to one bit on their own, *before* the
+already-dithered cells are pasted in at 1:1. Dithering the whole sheet at the
+end would have re-dithered every cell and made the comparison meaningless —
+the same mistake as rescaling a dither, one step later.
+
+### What the measurements actually showed
+
+The enormous gain is dithering at all, versus letting a driver threshold.
+Within dithering the differences are small and not all one way: against a
+synthetic portrait with a deep shadow side, `ADAPTIVE` gave the best printed
+contrast for features inside the shadow (7.8 vs 6.2 for the untuned baseline)
+but the *worst* fine-detail retention (97.1% of windows carrying detail, vs
+99.8%) and the most ink.
+
+`ATKINSON` is the default because of what it does at the ends of the scale, not
+because it won a contrast score. If your prints disagree, the test sheet is
+there precisely so the paper decides rather than this paragraph.
 
 Measured: the sheet leaves the booth with **2 distinct levels, 100% pure black
-or white**, at a cost of **30 ms** per sheet for a 958,000-dot label. Non-thermal
-papers are untouched — the step is a no-op unless the paper is thermal, verified
-by hash across all six.
+or white**, at a cost of about **30 ms** per sheet for a 958,000-dot label.
+Non-thermal papers are untouched — the step is a no-op unless the paper is
+thermal, verified by hash across every layout and paper.
 
-The dither runs in `compose()`, so the review and confirm screens show the
-dithered sheet: what a guest approves is what burns, dot for dot.
+**If DIFFUSION shows worm-like streaks** on large flat areas, try `SCREEN`.
+**If faces fill in solid**, raise `GAMMA` first, then `BRIGHTNESS`. **If it all
+looks grey and flat**, raise `CONTRAST`. **If text turns gritty**, drop
+`SHARPEN` to 0. **If prints come out as negatives**, turn `INVERT` on. **If
+prints come out narrower than the paper**, `HEAD WIDTH` is wrong.
 
-**If DIFFUSION shows worm-like streaks** on large flat areas, try `SCREEN` — it
-is coarser on a face but never smears. **If faces fill in solid**, raise
-BRIGHTNESS. **If it all looks grey and flat**, raise CONTRAST. **If text turns
-gritty**, drop SHARPEN to 0.
+### Head width
+
+`HEAD WIDTH`, under PRINTER CALIBRATION, is the number of dots across the
+printer's head, taken from its own specification. The presets — 832 for 104mm,
+576 for 80mm, 384 for 58mm — are conventions, not a rule: an 80mm printer with
+a 640-dot head exists, and a 576-dot sheet sent to one prints narrow with a
+white strip down the side. It can be typed as well as picked.
+
+Paper wider than the head is not an error anywhere. The printer clips it or
+shrinks it, silently. Admin compares the two and warns.
+
+### Getting the most out of the camera
+
+A one-bit print has no tonal range to spare, so three things at the camera end
+are worth more here than in a colour booth.
+
+`CAPTURE SIZE` **MAXIMUM** asks the open track what it can do and then asks for
+that. `getUserMedia` is given 1920x1080 as an *ideal*, which a browser
+satisfies with the nearest mode it has — and "nearest" can be 640x480 on a
+camera that also offers 4K.
+
+`SETTLE` is how long to let a just-opened camera meter before trusting a frame
+from it. The first second of frames is a visible ramp of exposure and white
+balance. The countdown covers this in the normal flow; a retake onto a
+just-reopened camera does not, so the shutter waits explicitly.
+
+`CAMERA LOCK` freezes exposure and white balance after that settle, so every
+shot in a strip matches instead of the camera re-metering because someone
+leaned out of frame. **This is the one that is genuinely not available
+everywhere.** The constraints are optional in the spec, no browser except
+Chrome implements them, and most USB webcams expose no manual modes at all. So
+the booth asks, reads back what it actually got from `track.getSettings()`, and
+reports only what it holds — a camera that accepts `applyConstraints` and
+quietly ignores it is reported as **not** locked. Admin says which of the three
+are offered and which are held; when none are, it says so and explains that
+AUTO EXPOSURE is the booth correcting the frame itself afterwards, which does
+not depend on the camera at all.
+
+### Evidence, and what the booth will not claim
+
+`printRasterImage` is the single way out, and four routes sit behind it:
+Bluetooth ESC/POS, USB TSPL, the Android system spooler, and a hidden iframe in
+the browser.
+
+Only the first two can say whether anything printed, and those are the only two
+the booth reports success for. The other two end at a handover — the sheet is
+in the OS's spooler or the browser's dialog — and what happens after that is
+invisible to a web page. Those routes say "sent", never "printed". The booth's
+record of a working printer is the operator pressing TEST PRINT and seeing
+paper, which is what `printerTestedAt` is, and Admin says as much rather than
+implying the timestamp proves a print.
+
+Two taps on PRINT are one print: a job in flight blocks a second, because on
+the thermal route a second job sent mid-raster corrupts the first — the printer
+has no job queue, just a byte stream.
+
+### The Android side
+
+`Dither.java` used to rescale and re-dither every sheet it was handed. That is
+both forbidden operations in one function, and it was silent: the print just
+came out soft. It now checks first. A sheet that is already bi-level and
+already the head's width is packed straight into bits, untouched; anything else
+falls through to the diffusion. The bi-level check refuses on the first grey or
+coloured pixel it finds, so a continuous-tone image is diffused rather than
+hard-thresholded.
+
+The Gradle build also fails now if `index.html` loads a script the asset sync
+did not copy — the failure mode otherwise is an APK that builds cleanly and
+comes up broken on the tablet with nothing in the log.
 
 ## Sticker and waybill printers
 
@@ -1344,3 +1487,72 @@ QR's finder patterns is exactly what stops a phone reading it.
 The **camera path could not be exercised** — the tool browser blocks device
 capture. Countdown, capture and the flash are wired the same way as the rest,
 but they are the one part that has only been read, not run.
+
+### The imaging pipeline
+
+Every built-in layout was rendered against every paper it fits, with fixed
+sample photographs, a fixed brand and a pinned clock, and the resulting
+`ImageData` hashed — **136 fingerprints**, taken before the pipeline was moved
+into `imaging.js` and again afterwards.
+
+**All 75 thermal fingerprints came back byte-identical** when the new pipeline
+was driven with the old values (`gamma: 1`, `sharpenRadius: 1`, `denoise: 0`).
+The halftoning, the shadow lift and the sharpening are provably the same code
+doing the same thing; what changed is the defaults and what is now available.
+
+53 of the 61 non-thermal fingerprints matched. The other 8 were **unstable
+within a single page run with no code change between them** — browser-side
+nondeterminism in high-quality colour resampling, not a regression. They are
+`a6|one-full`, `letter|six-grid`, `letter|two-stack`, `postcard-4x6|one-full`,
+`postcard-6x4|{four-grid,six-grid,two-stack}` and `selphy-l|one-full`.
+
+Also checked directly:
+
+- Every halftone leaves **exactly 2 levels**; `OFF` leaves 213, untouched.
+- `INVERT` is an exact complement, pixel for pixel.
+- `MAX LENGTH` clamps before the dither and still leaves 2 levels.
+- `GAMMA` 1.6 burns **31% fewer dots** than 1.0 — the right direction.
+- The preview pair redraws on a dither change and on a brightness bump, and
+  leaves exactly two canvases behind rather than accumulating them.
+- The test sheet renders at 576 x 1240 with all six labels legible and no
+  collisions. (The first version collided — the header height was guessed at a
+  fraction of the paper width instead of measured from its own three lines.)
+
+### The print transport
+
+Exercised against a stubbed `BoothNative`:
+
+- 2 sheets x 2 copies sends **4 jobs** and reports `pending`.
+- A second print while one is in flight is refused with `busy` and sends
+  **no** extra jobs.
+- `done` fires only after the **fourth** answer, not the first.
+- A failure does **not** call `done` and clears the busy state.
+- The TSPL job carries 576 dots, 80mm x 50.0mm, 2mm gap — 400 px at 203dpi is
+  50.0mm, so the geometry is right.
+- The spooler job carries 3150 x 1970 mils, which is 80mm x 50mm.
+
+`rollPaperMM` and `printPaperMils` were deleted by accident during that
+refactor and restored — caught by this test, not by reading.
+
+### The camera lock
+
+Not exercisable here either, so `maximiseCapture` and `settleAndLock` were run
+against six stub tracks modelling real browsers: a full Chrome webcam, Safari
+with no `getCapabilities` at all, a plain USB webcam with resolution but no
+manual modes, a camera that **accepts `applyConstraints` and silently ignores
+it**, lock off, and HD-only. All six reported correctly — in particular the
+fourth is reported as holding **no** locks, which is the whole point.
+
+### Android
+
+`packPixels` was lifted into a standalone Java file and run under JDK 17: a
+1-bit checkerboard packs with the right dot count and MSB-first bit order
+(`10101010`), a greyscale ramp is refused, a colour image is refused, 254/1
+PNG round-trip slop packs, transparent pixels burn nothing, and a single
+mid-grey pixel in an otherwise 1-bit sheet is refused.
+
+The APK builds (208 KB) and now contains `imaging.js`. The first build after
+this change **shipped without it** — `index.html` referenced a script the
+asset sync had not copied, which builds cleanly and fails only on the tablet.
+The new `checkWebAssets` Gradle task was then confirmed to fail the build with
+`index.html loads scripts that were not copied into the APK: imaging.js`.
