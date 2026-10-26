@@ -4640,7 +4640,28 @@ function usbCameraSection(){
   let report = '';
   try { report = (NATIVE.uvcReport && NATIVE.uvcReport()) || ''; } catch {}
 
+  /* What this particular tablet is willing to do, which is the thing that
+   * actually decides whether a USB camera can work here — and is decided by
+   * the manufacturer rather than by Android's version. Worth showing before
+   * anything else, because a tablet that hides USB cameras and a camera that
+   * is simply unplugged produce an identical empty list. */
+  let caps = '';
+  try { caps = (NATIVE.deviceCapabilities && NATIVE.deviceCapabilities()) || ''; } catch {}
+  const [shares, host, model] = caps.split('\t');
+
   const rows = [];
+  if (caps) {
+    rows.push(row('THIS TABLET', '<div class="seg"><button class="' +
+      (shares === 'SHARES USB CAMERAS' ? 'on' : '') + '">' + escapeHTML(shares || '?') +
+      '</button><button class="' + (host === 'USB HOST' ? 'on' : '') + '">' +
+      escapeHTML(host || '?') + '</button></div>'));
+    rows.push(row('MODEL', '<div class="seg"><button class="on">' +
+      escapeHTML(model || '') + '</button></div>'));
+    rows.push(note(shares === 'SHARES USB CAMERAS' ? 'info' : 'warn',
+      shares === 'SHARES USB CAMERAS'
+        ? 'This tablet shares USB cameras with apps, so a plugged-in camera should appear under ANDROID SEES above and simply work \u2014 no direct drive needed. This is the setting to look for when choosing a tablet, and most do not have it.'
+        : 'This tablet HIDES USB cameras from apps. It does not declare the external-camera feature, so no app on it \u2014 this one or any other \u2014 can open a USB camera the normal way. DIRECT DRIVE below is the workaround, and it only works on a camera with a BULK endpoint. If you are choosing a tablet, this is the line to check in the shop: install the booth, open this panel, and buy the one that says SHARES USB CAMERAS.'));
+  }
   rows.push(row('CAMERA SAYS', '<div class="seg"><button class="on">' +
     escapeHTML(report || 'NOTHING PLUGGED IN') + '</button></div>'));
   rows.push(row('DIRECT DRIVE',
