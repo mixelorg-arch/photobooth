@@ -40,11 +40,21 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- Portrait, so the iPad's camera sits above the guest's eyeline
+	     instead of off to one side. The operator screens are allowed to
+	     turn at runtime via BoothOrientation; this array is the ceiling,
+	     so it has to list every orientation either mode may use. -->
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 
 	<key>UIApplicationSceneManifest</key>
 	<dict>

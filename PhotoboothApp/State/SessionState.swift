@@ -75,11 +75,15 @@ final class SessionState: ObservableObject {
 
     let flash = ShutterFlash()
 
+    /// `camera` and `printer` default to nil rather than to a fresh instance:
+    /// a default argument is evaluated at the call site, which is nonisolated,
+    /// and both of those types are `@MainActor`. Building them inside the
+    /// initialiser keeps the construction on the actor that owns them.
     init(settingsStore: SettingsStore,
-         camera: CameraController = CameraController(),
+         camera: CameraController? = nil,
          printer: PrinterService? = nil) {
         self.settingsStore = settingsStore
-        self.camera = camera
+        self.camera = camera ?? CameraController()
         self.printer = printer ?? AirPrintService()
         self.layout = settingsStore.settings.guestLayouts.first ?? .oneFullPage
         self.copies = settingsStore.settings.defaultCopies
@@ -101,6 +105,19 @@ final class SessionState: ObservableObject {
                 : settings.thermalWidthDots
             printer = ThermalSDKService(savedPeripheralID: settings.thermalPeripheralID,
                                         widthDots: dots)
+        case .thermalTCP:
+            // Same roll-wins-over-setting rule as the Bluetooth path above,
+            // and for the same reason: a 576-dot receipt squeezed onto a
+            // head told it is 384 blurs the QR into something unscannable.
+            let dots = settings.media.isRoll
+                ? Int(settings.media.pixelSize.width)
+                : settings.thermalWidthDots
+            printer = ThermalTCPService(host: settings.thermalHost,
+                                        port: UInt16(clamping: settings.thermalPort),
+                                        widthDots: dots,
+                                        dpi: settings.media.dpi,
+                                        gapMM: settings.thermalGapMM,
+                                        baud: settings.thermalBaud)
         }
     }
 
@@ -110,6 +127,8 @@ final class SessionState: ObservableObject {
             return settings.lastPrinterName ?? "AirPrint — pick on first print"
         case .thermalBLE:
             return settings.thermalPeripheralName ?? "Thermal — not paired"
+        case .thermalTCP:
+            return "\(settings.thermalHost):\(settings.thermalPort)"
         }
     }
 

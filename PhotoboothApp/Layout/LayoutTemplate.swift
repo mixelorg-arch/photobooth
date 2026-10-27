@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 
 /// Paper the composed sheet is being made for.
 ///

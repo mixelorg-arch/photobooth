@@ -197,8 +197,119 @@ private struct PrinterSection: View {
 
                 case .thermalBLE:
                     ThermalPairing(store: store, session: session, link: link)
+
+                case .thermalTCP:
+                    ThermalBridge(store: store, session: session)
                 }
             }
+        }
+    }
+}
+
+/// Settings for a TSPL label printer behind a WiFi-to-serial bridge.
+///
+/// Deliberately four plain fields and a CHECK button rather than a scan
+/// list: the bridge broadcasts nothing discoverable. It is a TCP server at
+/// an address somebody has to know, so the honest interface is to ask for
+/// the address. See `ThermalTCPService` for what each field affects.
+private struct ThermalBridge: View {
+    @Environment(\.panelSize) private var size
+    @ObservedObject var store: SettingsStore
+    @ObservedObject var session: SessionState
+
+    @State private var checking = false
+    /// nil until CHECK has been pressed for the current address.
+    @State private var reachable: Bool?
+
+    private static let bauds = [9600, 19200, 38400, 57600, 115200]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                PixelText(text: statusText,
+                          cell: 3,
+                          colour: statusColour,
+                          fits: 420)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                    .heavyFramed(Panel.ruleThin)
+
+                PanelButton(title: checking ? "..." : "CHECK",
+                            cell: 3, enabled: !checking, minHeight: 54) {
+                    checking = true
+                    let probe = ThermalTCPService(host: store.settings.thermalHost,
+                                                  port: UInt16(clamping: store.settings.thermalPort),
+                                                  widthDots: store.settings.thermalWidthDots,
+                                                  dpi: store.settings.media.dpi,
+                                                  gapMM: store.settings.thermalGapMM,
+                                                  baud: store.settings.thermalBaud)
+                    Task {
+                        reachable = await probe.probe()
+                        checking = false
+                    }
+                }
+                .frame(width: size.pick(180, 120))
+            }
+
+            TextRow(title: "ADDRESS",
+                    text: store.settings.thermalHost,
+                    placeholder: "10.10.100.254") { host in
+                store.settings.thermalHost = host.trimmingCharacters(in: .whitespaces)
+                // The old answer is about the old address, so drop it rather
+                // than leave a stale REACHABLE next to a new host.
+                reachable = nil
+                session.rebuildPrinter()
+            }
+
+            NumberRow(title: "PORT",
+                      value: store.settings.thermalPort,
+                      range: 1...65535,
+                      suffix: "") { port in
+                store.settings.thermalPort = port
+                reachable = nil
+                session.rebuildPrinter()
+            }
+
+            NumberRow(title: "LABEL GAP",
+                      value: Int(store.settings.thermalGapMM.rounded()),
+                      range: 0...10,
+                      suffix: "MM") { gap in
+                store.settings.thermalGapMM = Double(gap)
+                session.rebuildPrinter()
+            }
+
+            SegmentedRow(title: "BAUD",
+                         options: Self.bauds.map { (String($0), String($0)) },
+                         selection: String(store.settings.thermalBaud)) { raw in
+                if let baud = Int(raw) {
+                    store.settings.thermalBaud = baud
+                    session.rebuildPrinter()
+                }
+            }
+
+            AdminNote(kind: .info,
+                      text: "The printer's WiFi is a serial bridge, not a network printer — it will never appear in the iOS print sheet. Join its network, then CHECK. BAUD must match the bridge's own setting or the label prints as noise.")
+
+            if reachable == false {
+                AdminNote(kind: .warning,
+                          text: "Nothing answered on that address. The usual cause is the iPad being on a different network from the printer.")
+            }
+        }
+    }
+
+    private var statusText: String {
+        switch reachable {
+        case .some(true):  return "REACHABLE"
+        case .some(false): return "NO ANSWER"
+        case nil:          return "\(store.settings.thermalHost):\(store.settings.thermalPort)"
+        }
+    }
+
+    private var statusColour: Color {
+        switch reachable {
+        case .some(true):  return Panel.sage
+        case .some(false): return Panel.salmon
+        case nil:          return Panel.ink
         }
     }
 }

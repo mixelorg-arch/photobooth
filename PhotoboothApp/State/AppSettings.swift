@@ -4,6 +4,7 @@ import Foundation
 enum PrinterTarget: String, Codable, CaseIterable, Identifiable {
     case airPrint      // SELPHY CP1500, and any AirPrint-capable thermal
     case thermalBLE    // Bluetooth ESC/POS receipt printer
+    case thermalTCP    // TSPL label printer behind a WiFi-to-serial bridge
 
     var id: String { rawValue }
 
@@ -11,6 +12,7 @@ enum PrinterTarget: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .airPrint:   return "AIRPRINT (SELPHY)"
         case .thermalBLE: return "THERMAL (BLUETOOTH)"
+        case .thermalTCP: return "THERMAL (WIFI)"
         }
     }
 }
@@ -51,6 +53,24 @@ struct AppSettings: Codable, Equatable {
     var thermalPeripheralName: String? = nil
     /// Imaging width in dots. 384 = 58 mm, 576 = 80 mm.
     var thermalWidthDots: Int = 384
+
+    // MARK: WiFi-to-serial bridge
+    //
+    // The VOZY U9's "WiFi" is an HF-LPT270 bridge, not a network printer.
+    // These are its factory defaults; all four are editable because a
+    // bridge reconfigured onto the venue's network will have none of them.
+    // See `ThermalTCPService` for what each one actually affects.
+
+    /// The bridge's address. 10.10.100.254 is its own AP; on a venue
+    /// network it becomes whatever DHCP hands out, so pin a static lease.
+    var thermalHost: String = "10.10.100.254"
+    var thermalPort: Int = 8899
+    /// Unprinted strip between die-cut labels. 0 for a continuous roll.
+    var thermalGapMM: Double = 2
+    /// Must match the baud set on the bridge's own web page, or the job
+    /// arrives as noise. Only used here to judge how long the bridge needs
+    /// to finish clocking a job out before the socket may close.
+    var thermalBaud: Int = 115200
 
     /// Layout ids offered to the guest, in order.
     var guestLayoutIDs: [String] = LayoutTemplate.all.map(\.id)

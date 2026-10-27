@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Generate Photobooth.xcodeproj from whatever is in PhotoboothApp/.
 
-There is no Xcode on the machine this was written on, so the project file is
-built here rather than checked in half-edited. Re-run it after adding or
-removing a source file — it rescans the tree and rewrites the project.
+The project file is generated rather than checked in half-edited, so re-run
+this after adding or removing a source file — it rescans the tree and rewrites
+the project. (It was first written on a machine believed to have no Xcode;
+that turned out to be wrong, but generating it is still right, because a
+hand-edit made in Xcode would be overwritten the next time this runs.)
 
 Object identifiers are md5-derived from a stable key, so regenerating an
 unchanged tree produces a byte-identical project (no spurious git diffs).
@@ -11,7 +13,9 @@ unchanged tree produces a byte-identical project (no spurious git diffs).
 
 import hashlib
 import os
+import re
 import shutil
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +29,15 @@ SWIFT_VERSION = "5.0"
 # Files that are compiled, and files that are copied into the bundle.
 SOURCE_EXT = {".swift"}
 RESOURCE_NAMES = {"Assets.xcassets"}
+
+# Directories copied into the bundle whole, keeping their structure.
+#
+# `web/` is the booth itself — the same files served at
+# mixelorg-arch.github.io/photobooth — and it has to stay a *folder*
+# reference rather than a group: booth.js, sw.js, the icons and the service
+# worker's cache list all address each other by relative path, and a group
+# would flatten every one of them into the bundle root.
+FOLDER_RESOURCES = ["web"]
 
 
 def oid(key):
@@ -45,6 +58,9 @@ def scan():
         for name in sorted(filenames):
             if os.path.splitext(name)[1] in SOURCE_EXT:
                 sources.append(os.path.join(rel_dir, name))
+    for folder in FOLDER_RESOURCES:
+        if os.path.isdir(os.path.join(ROOT, folder)):
+            resources.append(folder)
     return sorted(sources), sorted(resources)
 
 
@@ -54,6 +70,9 @@ def file_type(path):
         ".swift": "sourcecode.swift",
         ".plist": "text.plist.xml",
         ".xcassets": "folder.assetcatalog",
+        # No extension and a real directory: a folder reference, which Xcode
+        # copies in wholesale instead of descending into.
+        "": "folder" if os.path.isdir(os.path.join(ROOT, path)) else "text",
     }.get(ext, "text")
 
 
@@ -90,6 +109,75 @@ def emit_groups(name, node, lines, path_prefix=""):
         "\t\t}};".format(gid=gid, name=name, children=child_lines)
     )
     return gid
+
+
+def development_team():
+    """The Apple Developer team id to sign with, or None.
+
+    Baking this in saves a trip through Signing & Capabilities after every
+    regeneration: the project file is generated here, so a team picked in
+    Xcode's UI would be overwritten the next time this script runs.
+
+    A free "Personal Team" signs exactly like a paid one — it is the
+    seven-day expiry that differs, not the signing. Returns None until an
+    Apple ID has been added to Xcode, which leaves the project unsigned:
+    still fine for the simulator, and only a device build needs an account.
+    """
+    override = os.environ.get("DEVELOPMENT_TEAM", "").strip()
+    if override:
+        return override
+
+    # Xcode records every team it knows under this key, keyed by Apple ID.
+    try:
+        raw = subprocess.run(
+            ["defaults", "read", "com.apple.dt.Xcode", "IDEProvisioningTeams"],
+            capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    # That value is an old-style plist, not JSON. A team id is the only
+    # 10-character uppercase-alphanumeric field in it, so match that rather
+    # than carry a plist parser around for one string.
+    found = re.findall(r'teamID\s*=\s*"?([A-Z0-9]{10})"?', raw)
+    if found:
+        return found[0]
+
+    return _team_from_certificate()
+
+
+def _team_from_certificate():
+    """The team id read off an installed Apple Development certificate.
+
+    Xcode only fills in IDEProvisioningTeams once it has provisioned a
+    device, but it issues the signing certificate as soon as a team is
+    chosen — so between those two moments the certificate is the only place
+    the team id exists. That gap is exactly when someone is trying to get
+    their first device build out, so it is worth closing.
+
+    The id is the certificate's **OU**. Neither of the other two identifiers
+    in the subject is the team: CN carries the certificate id and UID the
+    user id, and both are easy to grab by mistake.
+    """
+    try:
+        listing = subprocess.run(
+            ["security", "find-identity", "-v", "-p", "codesigning"],
+            capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    for name in re.findall(r'"(Apple Develop(?:ment|er)[^"]*)"', listing):
+        try:
+            pem = subprocess.run(["security", "find-certificate", "-c", name, "-p"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            subject = subprocess.run(["openssl", "x509", "-noout", "-subject"],
+                                     input=pem, capture_output=True, text=True,
+                                     timeout=10).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        ou = re.search(r'OU\s*=\s*([A-Z0-9]{10})', subject)
+        if ou:
+            return ou.group(1)
+    return None
 
 
 def generate():
@@ -267,9 +355,13 @@ def generate():
         "SWIFT_COMPILATION_MODE": "wholemodule",
         "VALIDATE_PRODUCT": "YES",
     })
+    team = development_team()
     target_common = {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "CODE_SIGN_STYLE": "Automatic",
+        # Taken from Xcode's own accounts, so signing needs no visit to
+        # Signing & Capabilities. DEVELOPMENT_TEAM=... overrides it.
+        **({"DEVELOPMENT_TEAM": team} if team else {}),
         "CURRENT_PROJECT_VERSION": "1",
         "ENABLE_PREVIEWS": "YES",
         "GENERATE_INFOPLIST_FILE": "NO",

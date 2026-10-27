@@ -1544,6 +1544,18 @@ function dateStamp(d){
  * ==================================================================== */
 const NATIVE = (typeof window !== 'undefined' && window.BoothNative) || null;
 
+/* Which native shell, when there is one. The two differ in what they can
+ * reach, not in how the booth behaves: Android drives the thermal printer
+ * over Bluetooth or a USB cable, and iPadOS can do neither — Bluetooth
+ * Classic SPP needs MFi certification and USB needs a DriverKit extension
+ * with an Apple-granted entitlement. What an iPad *can* open is a TCP
+ * socket, so there the same `thermalPrint` call goes to the printer's
+ * WiFi-to-serial bridge instead. Same bytes, different wire. */
+const NATIVE_PLATFORM = (() => {
+  try { return (NATIVE && NATIVE.platform && NATIVE.platform()) || ''; } catch { return ''; }
+})();
+const NATIVE_IOS = NATIVE_PLATFORM === 'ios';
+
 /* iPadOS is the one browser platform that hands a web page a USB camera, so
  * the advice when a camera will not appear is different there than on a
  * laptop. iPadOS 13+ reports itself as a Macintosh, so the user-agent alone
@@ -3805,9 +3817,19 @@ function updateCopies(){
 /* Where the paper is actually coming from. The confirm screen is the last
  * thing an operator checks before an event, so it must not claim a route the
  * booth is not taking. */
+/* The address the iPad sends TSPL to. Not discoverable: the printer's WiFi
+ * is a transparent serial bridge, so there is nothing to scan for — it is a
+ * TCP server at an address somebody has to know. */
+function thermalBridgeLabel(){
+  const host = settings.thermalHost || '10.10.100.254';
+  const port = settings.thermalPort || 8899;
+  return host + ':' + port;
+}
+
 function printerLabel(){
   if (!NATIVE) return 'MACOS DIALOG';
-  return settings.printMode === 'thermal' ? 'BLUETOOTH THERMAL' : 'ANDROID DIALOG';
+  if (settings.printMode !== 'thermal') return NATIVE_IOS ? 'AIRPRINT' : 'ANDROID DIALOG';
+  return NATIVE_IOS ? 'WIFI THERMAL' : 'BLUETOOTH THERMAL';
 }
 
 function showConfirm(){
@@ -4427,8 +4449,16 @@ async function renderAdmin(){
   if (NATIVE) {
     // On the tablet the mode is a real choice, not an inference.
     printRows.push(row('PRINT MODE', seg('printMode',
-      [['dialog', 'SYSTEM DIALOG'], ['thermal', 'BLUETOOTH'], ['usb', 'USB']],
+      NATIVE_IOS
+        // No USB row on iPad: the cable cannot carry a print job there, and
+        // offering the choice only invites an evening spent plugging it in.
+        ? [['dialog', 'AIRPRINT'], ['thermal', 'WIFI THERMAL']]
+        : [['dialog', 'SYSTEM DIALOG'], ['thermal', 'BLUETOOTH'], ['usb', 'USB']],
       settings.printMode)));
+    if (NATIVE_IOS && settings.printMode === 'thermal') {
+      printRows.push(row('PRINTER', '<div class="seg"><button class="on">' +
+        escapeHTML(thermalBridgeLabel()) + '</button></div>'));
+    }
     if (settings.printMode === 'usb') {
       printRows.push(row('LABEL GAP', num('labelGapMM', 0, 6, 0.5, 'mm')));
       printRows.push(row('USB PRINTER', '<div class="seg"><button class="on">' +

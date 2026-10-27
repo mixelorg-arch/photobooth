@@ -35,11 +35,17 @@
 		92955D36F607E7BDDACDF1D9 /* Dither.swift in Build */ = {isa = PBXBuildFile; fileRef = B2209EBAF428A744D10CFD58; };
 		2C05B08EBA5BD59ACE4E90B1 /* ESCPOSEncoder.swift in Build */ = {isa = PBXBuildFile; fileRef = DC0395F7D1EA2BAA5C6D6E37; };
 		25A6CFC3CB08520A9978453C /* PrinterService.swift in Build */ = {isa = PBXBuildFile; fileRef = B6E5CC121A391A4941961638; };
+		6BEA916A579788E472C2D476 /* TSPLEncoder.swift in Build */ = {isa = PBXBuildFile; fileRef = EDAA853CA1F0F24C74F57FF4; };
 		944D811BE9438C62D9A6E2CA /* ThermalSDKService.swift in Build */ = {isa = PBXBuildFile; fileRef = FA91831E31F44DC2064A9ADB; };
+		9C516A8B8BECF0D103DE0966 /* ThermalTCPService.swift in Build */ = {isa = PBXBuildFile; fileRef = 780A10C4A35C5CE521F8D002; };
 		9A3F04EF6EC26B9F28859A2A /* AppSettings.swift in Build */ = {isa = PBXBuildFile; fileRef = F4CE134099B04A08351F9DA6; };
 		632FA995526076CA54DF269B /* SessionState.swift in Build */ = {isa = PBXBuildFile; fileRef = A891FEB716DFB47E1023468E; };
 		375DDC02A2610E5B42CA38A5 /* SettingsStore.swift in Build */ = {isa = PBXBuildFile; fileRef = EBFEE6D7FA634CBAB48BFDF7; };
+		93D4E258BA2544BD9A4B931B /* BoothWebView.swift in Build */ = {isa = PBXBuildFile; fileRef = F7B3D7766837634CB4170BA8; };
+		98006666BA6F7AD3DFC6AD41 /* LocalWebServer.swift in Build */ = {isa = PBXBuildFile; fileRef = B926774009D1AFF33AD92F69; };
+		F0790536EAC033DC96CE4920 /* WebBoothRoot.swift in Build */ = {isa = PBXBuildFile; fileRef = EA124D4748A86B22C9D6F423; };
 		0BF783DF727FDAAED5658BA8 /* Assets.xcassets in Build */ = {isa = PBXBuildFile; fileRef = 430DFDE4FD78B3C61C897157; };
+		5EB3A76B4796DECBAD05EB9A /* web in Build */ = {isa = PBXBuildFile; fileRef = B99FB69111B02615280362D3; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -71,11 +77,17 @@
 		B2209EBAF428A744D10CFD58 /* Dither.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dither.swift; sourceTree = "<group>"; };
 		DC0395F7D1EA2BAA5C6D6E37 /* ESCPOSEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESCPOSEncoder.swift; sourceTree = "<group>"; };
 		B6E5CC121A391A4941961638 /* PrinterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrinterService.swift; sourceTree = "<group>"; };
+		EDAA853CA1F0F24C74F57FF4 /* TSPLEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSPLEncoder.swift; sourceTree = "<group>"; };
 		FA91831E31F44DC2064A9ADB /* ThermalSDKService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalSDKService.swift; sourceTree = "<group>"; };
+		780A10C4A35C5CE521F8D002 /* ThermalTCPService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalTCPService.swift; sourceTree = "<group>"; };
 		F4CE134099B04A08351F9DA6 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		A891FEB716DFB47E1023468E /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
 		EBFEE6D7FA634CBAB48BFDF7 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		F7B3D7766837634CB4170BA8 /* BoothWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoothWebView.swift; sourceTree = "<group>"; };
+		B926774009D1AFF33AD92F69 /* LocalWebServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWebServer.swift; sourceTree = "<group>"; };
+		EA124D4748A86B22C9D6F423 /* WebBoothRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebBoothRoot.swift; sourceTree = "<group>"; };
 		430DFDE4FD78B3C61C897157 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B99FB69111B02615280362D3 /* web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = web; sourceTree = "<group>"; };
 		07A7A45C57C1C8CC3C76D276 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F5BF48AA40CAD7891EB709FC /* Photobooth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Photobooth.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -148,7 +160,9 @@
 				B2209EBAF428A744D10CFD58,
 				DC0395F7D1EA2BAA5C6D6E37,
 				B6E5CC121A391A4941961638,
+				EDAA853CA1F0F24C74F57FF4,
 				FA91831E31F44DC2064A9ADB,
+				780A10C4A35C5CE521F8D002,
 			);
 			path = Printing;
 			sourceTree = "<group>";
@@ -171,6 +185,16 @@
 			path = State;
 			sourceTree = "<group>";
 		};
+		3FDB3484BA4C8F60D6E90301 /* Web */ = {
+			isa = PBXGroup;
+			children = (
+				F7B3D7766837634CB4170BA8,
+				B926774009D1AFF33AD92F69,
+				EA124D4748A86B22C9D6F423,
+			);
+			path = Web;
+			sourceTree = "<group>";
+		};
 		3C0E4E150726C1A45312B047 /* PhotoboothApp */ = {
 			isa = PBXGroup;
 			children = (
@@ -182,6 +206,7 @@
 				4AC46CDD413E221A528B1EEA,
 				6DEE0CF483936F8E4216A987,
 				EC8BEF05AA0E700E20D46CD7,
+				3FDB3484BA4C8F60D6E90301,
 			);
 			path = PhotoboothApp;
 			sourceTree = "<group>";
@@ -287,10 +312,15 @@
 				92955D36F607E7BDDACDF1D9 /* Dither.swift */,
 				2C05B08EBA5BD59ACE4E90B1 /* ESCPOSEncoder.swift */,
 				25A6CFC3CB08520A9978453C /* PrinterService.swift */,
+				6BEA916A579788E472C2D476 /* TSPLEncoder.swift */,
 				944D811BE9438C62D9A6E2CA /* ThermalSDKService.swift */,
+				9C516A8B8BECF0D103DE0966 /* ThermalTCPService.swift */,
 				9A3F04EF6EC26B9F28859A2A /* AppSettings.swift */,
 				632FA995526076CA54DF269B /* SessionState.swift */,
 				375DDC02A2610E5B42CA38A5 /* SettingsStore.swift */,
+				93D4E258BA2544BD9A4B931B /* BoothWebView.swift */,
+				98006666BA6F7AD3DFC6AD41 /* LocalWebServer.swift */,
+				F0790536EAC033DC96CE4920 /* WebBoothRoot.swift */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -302,6 +332,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0BF783DF727FDAAED5658BA8 /* Assets.xcassets */,
+				5EB3A76B4796DECBAD05EB9A /* web */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -365,6 +396,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 64NVM8Y8B4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "PhotoboothApp/App/Info.plist";
@@ -386,6 +418,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 64NVM8Y8B4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "PhotoboothApp/App/Info.plist";
