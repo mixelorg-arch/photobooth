@@ -92,6 +92,11 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
     /// Prints run one after another, never at once. See `print`.
     private var chain: Task<Void, Never>?
 
+    /// Where TSPL goes. Seeded from the native defaults and then owned by
+    /// the page, which sends `thermalTarget` before every job.
+    private lazy var thermalHost: String = store.settings.thermalHost
+    private lazy var thermalPort: UInt16 = UInt16(clamping: store.settings.thermalPort)
+
     init(store: SettingsStore) {
         self.store = store
     }
@@ -128,6 +133,7 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
             thermalPrint: function (dataUrl, copies, widthDots) {
               post('thermalPrint', [dataUrl, copies, widthDots]);
             },
+            thermalTarget: function (host, port) { post('thermalTarget', [host, port]); },
             savePNG: function (dataUrl, name) { post('savePNG', [dataUrl, name]); },
             /* No toast: booth.js has its own, and falls back to it whenever
                NATIVE.toast is absent. A native one would look foreign and
@@ -166,12 +172,25 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
             // would rescale the sheet and blur the QR past scanning.
             let dots = (args.count > 2 ? args[2] as? Int : nil) ?? store.settings.thermalWidthDots
             print(image, copies: copies, jobName: "Photobooth", service: ThermalTCPService(
-                host: store.settings.thermalHost,
-                port: UInt16(clamping: store.settings.thermalPort),
+                host: thermalHost,
+                port: thermalPort,
                 widthDots: dots,
                 dpi: 203,
                 gapMM: store.settings.thermalGapMM,
                 baud: store.settings.thermalBaud))
+
+        case "thermalTarget":
+            // The page owns this now, so the operator can move the printer
+            // onto the venue's network without a rebuild. Blank means the
+            // field was cleared; keep the last good value rather than
+            // sending the next job into nowhere.
+            if let host = (args.first as? String)?.trimmingCharacters(in: .whitespaces),
+               !host.isEmpty {
+                thermalHost = host
+            }
+            if let port = args.count > 1 ? Self.int(args[1]) : nil, port > 0, port < 65536 {
+                thermalPort = UInt16(port)
+            }
 
         case "savePNG":
             let dataURL = args.first as? String ?? ""
@@ -282,6 +301,14 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
                     .setNeedsUpdateOfSupportedInterfaceOrientations()
             }
         }
+    }
+
+    /// JavaScript numbers arrive as `NSNumber`, but a value typed into a
+    /// text field arrives as a `String`. Accept both.
+    private static func int(_ any: Any) -> Int? {
+        if let n = any as? NSNumber { return n.intValue }
+        if let s = any as? String { return Int(s.trimmingCharacters(in: .whitespaces)) }
+        return nil
     }
 
     private static func decode(_ dataURL: String) -> UIImage? {
