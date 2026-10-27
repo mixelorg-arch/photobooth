@@ -1778,6 +1778,12 @@ const DEFAULTS = {
   /// number to be set from the printer's own specification, which is why it
   /// can be typed as well as picked.
   thermalWidthDots: 576,
+  /* Where the iPad sends TSPL. The printer's "WiFi" is a transparent
+   * serial bridge, so there is nothing to discover — it is a TCP server at
+   * an address somebody has to know. These are its factory defaults; a
+   * bridge moved onto the venue's network will have neither. */
+  thermalHost: '10.10.100.254',
+  thermalPort: 8899,
   /* --- the layout editor --- */
   /// Paper sizes the operator added, in the same shape as MEDIA.
   customMedia: [],
@@ -4054,6 +4060,12 @@ function printRasterImage(sheets, media, o){
     for (let c = 0; c < copies; c++) {
       dataURLs.forEach(u => {
         if (settings.printMode === 'thermal') {
+          /* Sent separately rather than as extra arguments to thermalPrint:
+           * Android's @JavascriptInterface matches on exact arity, so adding
+           * parameters there would stop the call resolving at all. */
+          if (typeof NATIVE.thermalTarget === 'function') {
+            try { NATIVE.thermalTarget(settings.thermalHost, settings.thermalPort | 0); } catch {}
+          }
           NATIVE.thermalPrint(u, 1, dots);
         } else {
           /* TSPL describes a label, not a stream, so the printer has to be
@@ -4469,8 +4481,10 @@ async function renderAdmin(){
         : [['dialog', 'SYSTEM DIALOG'], ['thermal', 'BLUETOOTH'], ['usb', 'USB']],
       settings.printMode)));
     if (NATIVE_IOS && settings.printMode === 'thermal') {
-      printRows.push(row('PRINTER', '<div class="seg"><button class="on">' +
-        escapeHTML(thermalBridgeLabel()) + '</button></div>'));
+      // Free text, not a stepper: nobody wants to press + eight thousand
+      // times to reach 8899, and an address is typed anyway.
+      printRows.push(row('PRINTER IP', field('thermalHost', '10.10.100.254')));
+      printRows.push(row('PRINTER PORT', field('thermalPort', '8899')));
     }
     if (settings.printMode === 'usb') {
       printRows.push(row('LABEL GAP', num('labelGapMM', 0, 6, 0.5, 'mm')));
