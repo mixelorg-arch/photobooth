@@ -89,7 +89,8 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
 
     var store: SettingsStore
     private weak var web: WKWebView?
-    private var printTask: Task<Void, Never>?
+    /// Prints run one after another, never at once. See `print`.
+    private var chain: Task<Void, Never>?
 
     init(store: SettingsStore) {
         self.store = store
@@ -128,7 +129,9 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
               post('thermalPrint', [dataUrl, copies, widthDots]);
             },
             savePNG: function (dataUrl, name) { post('savePNG', [dataUrl, name]); },
-            toast: function (message) { post('toast', [message]); },
+            /* No toast: booth.js has its own, and falls back to it whenever
+               NATIVE.toast is absent. A native one would look foreign and
+               could not be styled with the rest of the booth. */
             setRotation: function (free) { post('setRotation', [!!free]); }
           };
         })();
@@ -146,7 +149,7 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
         switch fn {
         case "printSheet":
             guard let dataURL = args.first as? String, let image = Self.decode(dataURL) else {
-                return toast("The sheet came back empty.")
+                return notify(ok: false, message: "The sheet came back empty.")
             }
             let copies = (args.count > 1 ? args[1] as? Int : 1) ?? 1
             let name = (args.count > 4 ? args[4] as? String : nil) ?? "Photobooth"
@@ -155,7 +158,7 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
 
         case "thermalPrint":
             guard let dataURL = args.first as? String, let image = Self.decode(dataURL) else {
-                return toast("The sheet came back empty.")
+                return notify(ok: false, message: "The sheet came back empty.")
             }
             let copies = (args.count > 1 ? args[1] as? Int : 1) ?? 1
             // The roll states its own imaging width, and booth.js has
@@ -175,9 +178,6 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
             let name = (args.count > 1 ? args[1] as? String : nil) ?? "photobooth"
             save(dataURL, named: name)
 
-        case "toast":
-            toast(args.first as? String ?? "")
-
         case "setRotation":
             setRotation(free: args.first as? Bool ?? false)
 
@@ -188,13 +188,25 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
 
     // MARK: - Doing the work
 
+    /// Runs a print, after every print already asked for.
+    ///
+    /// Serial, and that is not tidiness. `booth.js` asks for N copies by
+    /// calling across the bridge N times in a tight loop and counting the
+    /// replies down to zero, so each call has to run and report. Cancelling
+    /// the previous one — which this did at first — leaves that counter
+    /// stuck above zero, `printBusy()` true forever, and every later print
+    /// answered with "A print is already on its way."
+    ///
+    /// It also matters on the wire: the WiFi bridge is a *serial* line, and
+    /// two jobs sent down it at once interleave into one corrupt label.
     private func print(_ image: UIImage, copies: Int, jobName: String, service: PrinterService) {
         let job = PrintJob(image: image,
                            copies: max(1, copies),
                            media: store.settings.media,
                            jobName: jobName)
-        printTask?.cancel()
-        printTask = Task { @MainActor in
+        let previous = chain
+        chain = Task { @MainActor in
+            _ = await previous?.value
             do {
                 for try await update in service.submit(job) {
                     _ = update
@@ -208,23 +220,31 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
 
     /// Tells `booth.js` how the print went.
     ///
-    /// The wording matters and is not decoration: on the wifi path nothing
-    /// downstream confirms that paper moved, so this says *sent*. Reporting
-    /// a print the booth cannot observe is the same failure as feeding a
-    /// TSPL printer ESC/POS — a cheerful message over a blank label.
+    /// The name is not ours to choose: the page exposes
+    /// `window.booth.nativePrintResult(ok, message)` and counts one call per
+    /// sheet per copy. Calling anything else — the first version of this
+    /// invented `window.BoothNativeResult` — throws the result away, leaves
+    /// the page's counter stuck, and wedges the booth after one print with
+    /// no error anywhere.
+    ///
+    /// The wording matters too: on the wifi path nothing downstream confirms
+    /// that paper moved, so this says *sent*. Reporting a print the booth
+    /// cannot observe is the same failure as feeding a TSPL printer ESC/POS
+    /// — a cheerful message over a blank label.
     private func notify(ok: Bool, message: String) {
         let escaped = message
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: " ")
         web?.evaluateJavaScript(
-            "window.BoothNativeResult && window.BoothNativeResult(\(ok), '\(escaped)');",
+            "window.booth && window.booth.nativePrintResult && "
+            + "window.booth.nativePrintResult(\(ok), '\(escaped)');",
             completionHandler: nil)
     }
 
     private func save(_ dataURL: String, named name: String) {
         guard let image = Self.decode(dataURL), let png = image.pngData() else {
-            return toast("Nothing to save.")
+            return NSLog("[booth] savePNG: nothing to save")
         }
         // Documents, not the photo library: the library needs a usage
         // description and a consent prompt, and a permission sheet in front
@@ -233,17 +253,16 @@ final class BoothBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavig
         let safe = name.replacingOccurrences(of: "/", with: "-")
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let url = dir.appendingPathComponent(safe.hasSuffix(".png") ? safe : safe + ".png")
+        // Deliberately silent either way: a save is not a print, and
+        // `nativePrintResult` is the only channel back into the page. Using
+        // it here would count a saved file as a printed sheet and leave the
+        // page's copy counter short.
         do {
             try png.write(to: url)
-            toast("Saved \(url.lastPathComponent)")
+            NSLog("[booth] saved %@", url.lastPathComponent)
         } catch {
-            toast("Could not save: \(error.localizedDescription)")
+            NSLog("[booth] savePNG failed: %@", error.localizedDescription)
         }
-    }
-
-    private func toast(_ message: String) {
-        guard !message.isEmpty else { return }
-        notify(ok: true, message: message)
     }
 
     /// Lets the operator screens turn, and pins the guest screens.

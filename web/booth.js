@@ -1818,6 +1818,12 @@ function loadSettings(){
     merged = Object.assign({}, DEFAULTS, saved);
   } catch { merged = Object.assign({}, DEFAULTS); }
 
+  /* A booth that was set to USB before it moved to a shell without one would
+   * otherwise keep calling a method that is not there and print nothing, with
+   * no error a guest or an operator ever sees. Dropping the *option* from the
+   * panel does not change what was already saved, so migrate the value too. */
+  if (NATIVE_IOS && merged.printMode === 'usb') merged.printMode = 'thermal';
+
   // The editor's papers and layouts have to be registered before the offered
   // list is checked, or every custom layout would look unknown and be dropped.
   registerCustom(merged);
@@ -4035,7 +4041,14 @@ function printRasterImage(sheets, media, o){
   const dataURLs = list.map(sheet => sheetDataURL(sheet, media));
   const done = o.done || (() => {});
 
-  if (NATIVE && (settings.printMode === 'thermal' || settings.printMode === 'usb')) {
+  /* Each mode needs the method that carries it. A shell may implement one
+   * and not the other — iPadOS has no USB print path at all — and calling a
+   * missing one throws inside a loop whose failure is a silent blank. */
+  const nativeRoute = NATIVE && (
+    (settings.printMode === 'thermal' && typeof NATIVE.thermalPrint === 'function') ||
+    (settings.printMode === 'usb' && typeof NATIVE.usbPrint === 'function'));
+
+  if (nativeRoute) {
     printJob = {test: !!o.test, done: done, pending: list.length * copies};
     const dots = Math.max(64, settings.thermalWidthDots | 0);
     for (let c = 0; c < copies; c++) {
